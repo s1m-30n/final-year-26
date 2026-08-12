@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Scratch folder for temp scripts
+scratch/
+
+*.env

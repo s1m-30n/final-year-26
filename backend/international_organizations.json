@@ -1,0 +1,157 @@
+{
+  "project": "Agricultural Extension Services Multimodal RAG System",
+  "category": "International & Global Agricultural Research Organizations",
+  "version": "1.0.0",
+  "last_updated": "2026-07-24",
+  "total_organizations": 14,
+  "organizations": [
+    {
+      "id": "fao",
+      "acronym": "FAO",
+      "name": "Food and Agriculture Organization of the United Nations",
+      "headquarters": "Rome, Italy",
+      "regional_office": "Accra, Ghana (Regional Office for Africa)",
+      "website_url": "https://www.fao.org",
+      "repository_url": "https://www.fao.org/documents",
+      "key_crop_domains": ["Pest Control", "Food Security", "Soil Health", "Post-Harvest Drying", "Climate Resilience"],
+      "description": "Leading UN specialized agency directing global efforts to defeat hunger, modernize agriculture, and ensure sustainable food systems across developing nations."
+    },
+    {
+      "id": "iita",
+      "acronym": "IITA / CGIAR",
+      "name": "International Institute of Tropical Agriculture",
+      "headquarters": "Ibadan, Nigeria",
+      "website_url": "https://www.iita.org",
+      "repository_url": "https://cgspace.cgiar.org/handle/10568/96496",
+      "key_crop_domains": ["Cassava", "Maize", "Yam", "Cowpea", "Plantain", "Soybean", "Biocontrol"],
+      "description": "Primary CGIAR research institute in Sub-Saharan Africa focusing on crop breeding, disease eradication (CMD, FAW), and sustainable tropical farming."
+    },
+    {
+      "id": "icrisat",
+      "acronym": "ICRISAT",
+      "name": "International Crops Research Institute for the Semi-Arid Tropics",
+      "headquarters": "Patancheru, India",
+      "regional_office": "Kano, Nigeria / Niamey, Niger",
+      "website_url": "https://www.icrisat.org",
+      "repository_url": "https://oar.icrisat.org",
+      "key_crop_domains": ["Groundnut", "Sorghum", "Pearl Millet", "Pigeonpea", "Dryland Farming"],
+      "description": "International non-profit conducting agricultural research for dryland tropics, improving drought-tolerant crops in Northern Nigeria and the Sahel."
+    },
+    {
+      "id": "ifpri",
+      "acronym": "IFPRI / CGIAR",
+      "name": "International Food Policy Research Institute",
+      "headquarters": "Washington, D.C., USA",
+      "regional_office": "Abuja, Nigeria (Nigeria Strategy Support Program)",
+      "website_url": "https://www.ifpri.org",
+      "repository_url": "https://ebrary.ifpri.org",
+      "key_crop_domains": ["Agricultural Policy", "Smallholder Credit", "Food Price Stabilization", "Market Access"],
+      "description": "CGIAR center providing research-based policy solutions to reduce poverty, end hunger, and support agricultural development policies in West Africa."
+    },
+    {
+      "id": "cimmyt",
+      "acronym": "CIMMYT",
+      "name": "International Maize and Wheat Improvement Center",
+      "headquarters": "El Batán, Mexico",
+      "website_url": "https://www.cimmyt.org",
+      "repository_url": "https://repository.cimmyt.org",
+      "key_crop_domains": ["Maize", "Wheat", "Drought Tolerant Maize for Africa (DTMA)", "Quality Protein Maize"],
+      "description": "Global non-profit agricultural research organization specializing in high-yielding, drought-tolerant maize and wheat varieties."
+    },
+    {
+      "id": "ciat",
+      "acronym": "Alliance of Bioversity & CIAT",
+      "name": "International Center for Tropical Agriculture",
+      "headquarters": "Palmira, Colombia",
+      "website_url": "https://alliancebioversityciat.org",
+      "repository_url": "https://cgspace.cgiar.org",
+      "key_crop_domains": ["Common Beans", "Forages", "Soil Health", "Agrobiodiversity", "Climate Smart Agriculture"],
+      "description": "Delivers research-based solutions that harness agricultural biodiversity and sustainably transform food systems."
+    },
+    {
+      "id": "africarice",
+      "acronym": "AfricaRice",
+      "name": "AfricaRice Center (CGIAR Rice Research Center for Africa)",
+      "headquarters": "Abidjan, Côte d'Ivoire",
+      "station_nigeria": "Badeggi / Ibadan, Nigeria",
+      "website_url": "https://www.africarice.org",
+      "repository_url": "https://cgspace.cgiar.org",
+      "key_crop_domains": ["Upland Rice", "Lowland Paddy Rice", "NERICA Varieties", "Parboiling Technology", "Rice Blast"],
+      "description": "Pan-African center of excellence for rice research, technology development, and capacity building across African member states."
+    },
+    {
+      "id": "ifad",
+      "acronym": "IFAD",
+      "name": "International Fund for Agricultural Development",
+      "headquarters": "Rome, Italy",
+      "website_url": "https://www.ifad.org",
+      "repository_url": "https://www.ifad.org/en/web/knowledge/publications",
+      "key_crop_domains": ["Smallholder Financing", "Rural Infrastructure", "Value Chain Development", "Youth Agripreneurs"],
+      "description": "International financial institution and specialized UN agency dedicated to eradicating poverty and hunger in rural areas of developing countries."
+    },
+    {
+      "id": "worldbank",
+      "acronym": "World Bank",
+      "name": "World Bank Group - Global Agricultural & Food Security Practice",
+      "headquarters": "Washington, D.C., USA",
+      "website_url": "https://www.worldbank.org/en/topic/agriculture",
+      "repository_url": "https://openknowledge.worldbank.org",
+      "key_crop_domains": ["Agri-Business Funding", "APPEALS Project Nigeria", "Fadama Development Project"],
+      "description": "Provides major financial and technical assistance to developing countries to boost agricultural productivity and climate resilience."
+    },
+    {
+      "id": "aatf",
+      "acronym": "AATF",
+      "name": "African Agricultural Technology Foundation",
+      "headquarters": "Nairobi, Kenya",
+      "regional_office": "Abuja, Nigeria",
+      "website_url": "https://www.aatf-africa.org",
+      "repository_url": "https://www.aatf-africa.org/resources",
+      "key_crop_domains": ["PBR Bt Cowpea", "Hybrid Seed Access", "Agricultural Biotechnology", "Stewardship"],
+      "description": "Empowers smallholder farmers in Sub-Saharan Africa with agricultural technologies that generate wealth and combat food insecurity."
+    },
+    {
+      "id": "coraf",
+      "acronym": "CORAF / WECARD",
+      "name": "West and Central African Council for Agricultural Research and Development",
+      "headquarters": "Dakar, Senegal",
+      "website_url": "http://www.coraf.org",
+      "repository_url": "http://www.coraf.org/publications",
+      "key_crop_domains": ["Regional Extension", "West Africa Seed Program (WASP)", "Cross-Border Pest Monitoring"],
+      "description": "Coordinates agricultural research and advisory services across 23 national agricultural research systems in West and Central Africa."
+    },
+    {
+      "id": "wfp",
+      "acronym": "WFP",
+      "name": "World Food Programme - Agri-Livelihood & Food Systems Unit",
+      "headquarters": "Rome, Italy",
+      "regional_office": "Dakar / Maiduguri, Nigeria",
+      "website_url": "https://www.wfp.org",
+      "repository_url": "https://www.wfp.org/publications",
+      "key_crop_domains": ["Post-Harvest Storage", "Emergency Food Aid", "Resilience Building", "Smallholder Market Access"],
+      "description": "World's largest humanitarian organization assisting smallholders in conflict and climate-vulnerable zones with food security and post-harvest tools."
+    },
+    {
+      "id": "usaid",
+      "acronym": "USAID",
+      "name": "USAID / Feed the Future West Africa Program",
+      "headquarters": "Washington, D.C., USA",
+      "regional_mission": "Abuja, Nigeria",
+      "website_url": "https://www.feedthefuture.gov",
+      "repository_url": "https://pdf.usaid.gov",
+      "key_crop_domains": ["Agricultural Value Chains", "Seed Systems", "Market Linkages", "Water & Sanitation"],
+      "description": "U.S. Government's global hunger and food security initiative supporting agricultural growth and nutritional enhancement across Nigeria."
+    },
+    {
+      "id": "giz",
+      "acronym": "GIZ",
+      "name": "GIZ German Agency for International Cooperation (Green Innovation Centres)",
+      "headquarters": "Bonn / Eschborn, Germany",
+      "country_office": "Abuja, Nigeria",
+      "website_url": "https://www.giz.de",
+      "repository_url": "https://www.giz.de/en/worldwide/317.html",
+      "key_crop_domains": ["Green Innovation in Agriculture", "Cassava & Maize Processing", "Rice Mechanization", "Vocational Training"],
+      "description": "German international enterprise fostering sustainable agricultural value chains, youth employment, and technology transfer in Nigeria."
+    }
+  ]
+}

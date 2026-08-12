@@ -1,0 +1,9 @@
+fastapi==0.115.8
+uvicorn==0.34.0
+chromadb==0.6.3
+requests==2.32.3
+python-multipart==0.0.20
+pillow==11.1.0
+python-dotenv==1.0.1
+sentence-transformers
+openai-whisper
