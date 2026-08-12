@@ -1,14 +1,54 @@
-import { useState, useRef, useEffect } from "react";
-import { Camera, CameraOff, RefreshCw, Download, AlertCircle, Play, Sparkles } from "lucide-react";
+import React, { useState, useRef, useEffect } from "react";
+import {
+  Box,
+  Flex,
+  Grid,
+  GridItem,
+  Heading,
+  Text,
+  Badge,
+  Button,
+  Spinner,
+  Separator,
+  Stack,
+  HStack,
+  VStack,
+  SimpleGrid,
+} from "@chakra-ui/react";
+import {
+  Camera,
+  CameraOff,
+  AlertCircle,
+  Play,
+  Sparkles,
+  Check,
+  Printer,
+  Upload,
+} from "lucide-react";
 
 interface LiveCameraScannerProps {
-  backendUrl: string; geminiKey: string; hfToken: string;
-  onNewLog: (stage: string, message: string) => void; onClearLogs: () => void;
+  backendUrl: string;
+  geminiKey: string;
+  hfToken: string;
+  onNewLog: (stage: string, message: string) => void;
+  onClearLogs: () => void;
 }
 
-interface DiagnosisResult { disease: string; crop: string; confidence: number; symptoms: string[]; treatment: string[]; }
+interface DiagnosisResult {
+  disease: string;
+  crop: string;
+  confidence: number;
+  symptoms: string[];
+  treatment: string[];
+}
 
-export default function LiveCameraScanner({ backendUrl, geminiKey, hfToken, onNewLog, onClearLogs }: LiveCameraScannerProps) {
+export default function LiveCameraScanner({
+  backendUrl,
+  geminiKey,
+  hfToken,
+  onNewLog,
+  onClearLogs,
+}: LiveCameraScannerProps) {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState("");
@@ -17,256 +57,763 @@ export default function LiveCameraScanner({ backendUrl, geminiKey, hfToken, onNe
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<DiagnosisResult | null>(null);
   const [scanActive, setScanActive] = useState(false);
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fallbackInputRef = useRef<HTMLInputElement>(null);
+
+  const showNotification = (msg: string) => {
+    setToastMsg(msg);
+    setTimeout(() => setToastMsg(null), 3000);
+  };
 
   const getDevices = async () => {
     try {
       const all = await navigator.mediaDevices.enumerateDevices();
       const video = all.filter((d) => d.kind === "videoinput");
       setDevices(video);
-      if (video.length > 0 && !selectedDeviceId) setSelectedDeviceId(video[0].deviceId);
+      if (video.length > 0 && !selectedDeviceId)
+        setSelectedDeviceId(video[0].deviceId);
     } catch {}
   };
 
-  useEffect(() => { getDevices(); return () => { stopCamera(); }; }, []);
+  useEffect(() => {
+    getDevices();
+    return () => {
+      stopCamera();
+    };
+  }, []);
 
   const startCamera = async () => {
-    setError(""); setResult(null); onClearLogs();
-    onNewLog("Webcam", "Requesting camera...");
+    setError("");
+    setResult(null);
+    onClearLogs();
+    onNewLog("Webcam", "Requesting camera stream...");
     try {
       if (stream) stopCamera();
       const s = await navigator.mediaDevices.getUserMedia({
-        video: selectedDeviceId ? { deviceId: { exact: selectedDeviceId } } : { facingMode: "environment" }
+        video: selectedDeviceId
+          ? { deviceId: { exact: selectedDeviceId } }
+          : { facingMode: "environment" },
       });
       setStream(s);
       if (videoRef.current) videoRef.current.srcObject = s;
       setCameraActive(true);
-      onNewLog("Webcam", "Camera active.");
+      onNewLog("Webcam", "Camera stream active.");
       getDevices();
     } catch (err: any) {
-      setError("Camera access denied.");
+      setError("Camera access denied or unavailable.");
       onNewLog("Webcam Error", err.message);
     }
   };
 
   const stopCamera = () => {
     stream?.getTracks().forEach((t) => t.stop());
-    setStream(null); setCameraActive(false); setScanActive(false);
-    onNewLog("Webcam", "Camera stopped.");
+    setStream(null);
+    setCameraActive(false);
+    setScanActive(false);
+    onNewLog("Webcam", "Camera stream stopped.");
   };
 
-  const handleFallbackCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFallbackCapture = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setLoading(true); setResult(null); onClearLogs();
-    onNewLog("Capture", "Processing photo...");
+    setLoading(true);
+    setResult(null);
+    onClearLogs();
+    onNewLog("Capture", "Processing photo for multimodal AI diagnosis...");
     try {
       const formData = new FormData();
       formData.append("image", file);
       if (geminiKey) formData.append("gemini_key", geminiKey);
       if (hfToken) formData.append("hf_token", hfToken);
-      const res = await fetch(`${backendUrl}/diagnose`, { method: "POST", body: formData });
+      const res = await fetch(`${backendUrl}/diagnose`, {
+        method: "POST",
+        body: formData,
+      });
       if (!res.ok) throw new Error(`Status ${res.status}`);
       const data = await res.json();
       setResult(data);
       onNewLog("Diagnosis", `${data.disease} (${data.confidence}%)`);
-    } catch (err: any) { onNewLog("Error", err.message); }
-    finally { setLoading(false); }
+    } catch (err: any) {
+      onNewLog("Error", err.message);
+      showNotification("Image diagnostic failed.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const captureFrameAndDiagnose = async () => {
     if (!videoRef.current || !canvasRef.current) return;
-    setLoading(true); setResult(null); setScanActive(true); onClearLogs();
-    onNewLog("Scanner", "Capturing frame...");
+    setLoading(true);
+    setResult(null);
+    setScanActive(true);
+    onClearLogs();
+    onNewLog("Scanner", "Capturing live frame snapshot...");
     try {
-      const v = videoRef.current, c = canvasRef.current, ctx = c.getContext("2d");
+      const v = videoRef.current,
+        c = canvasRef.current,
+        ctx = c.getContext("2d");
       if (ctx) {
-        c.width = v.videoWidth || 640; c.height = v.videoHeight || 480;
+        c.width = v.videoWidth || 640;
+        c.height = v.videoHeight || 480;
         ctx.drawImage(v, 0, 0, c.width, c.height);
-        onNewLog("Scanner", "Analyzing...");
+        onNewLog(
+          "Scanner",
+          "Analyzing leaf pathology via Gemini 2.5 Flash Vision...",
+        );
         c.toBlob(async (blob) => {
-          ctx.clearRect(0, 0, c.width, c.height); c.width = 0; c.height = 0;
-          if (!blob) { setLoading(false); setScanActive(false); return; }
+          ctx.clearRect(0, 0, c.width, c.height);
+          c.width = 0;
+          c.height = 0;
+          if (!blob) {
+            setLoading(false);
+            setScanActive(false);
+            return;
+          }
           const formData = new FormData();
-          formData.append("image", new File([blob], "scan.jpg", { type: "image/jpeg" }));
+          formData.append(
+            "image",
+            new File([blob], "scan.jpg", { type: "image/jpeg" }),
+          );
           if (geminiKey) formData.append("gemini_key", geminiKey);
           if (hfToken) formData.append("hf_token", hfToken);
           try {
-            const res = await fetch(`${backendUrl}/diagnose`, { method: "POST", body: formData });
+            const res = await fetch(`${backendUrl}/diagnose`, {
+              method: "POST",
+              body: formData,
+            });
             if (!res.ok) throw new Error(`Status ${res.status}`);
             const data = await res.json();
-            setResult(data); setScanActive(false);
+            setResult(data);
+            setScanActive(false);
             onNewLog("Diagnosis", `${data.disease} (${data.confidence}%)`);
-          } catch (err: any) { onNewLog("Error", err.message); setScanActive(false); }
-          finally { setLoading(false); }
+          } catch (err: any) {
+            onNewLog("Error", err.message);
+            setScanActive(false);
+            showNotification("Frame diagnostic request failed.");
+          } finally {
+            setLoading(false);
+          }
         }, "image/jpeg");
       }
-    } catch (err: any) { setLoading(false); setScanActive(false); onNewLog("Error", err.message); }
+    } catch (err: any) {
+      setLoading(false);
+      setScanActive(false);
+      onNewLog("Error", err.message);
+    }
   };
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      {/* Header Bar */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2.5">
-            <Camera className="w-6 h-6 text-slate-700" /> Live AI Leaf Scanner
-          </h2>
-          <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
-            Real-time crop leaf pathology diagnostics powered by Gemini 2.5 Flash Vision API.
-          </p>
-        </div>
-        {cameraActive && devices.length > 1 && (
-          <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-3.5 py-2 rounded-xl text-xs">
-            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Camera:</span>
-            <select
-              className="bg-transparent font-bold text-slate-900 focus:outline-none cursor-pointer text-xs"
-              value={selectedDeviceId}
-              onChange={(e) => { setSelectedDeviceId(e.target.value); startCamera(); }}
-            >
-              {devices.map((d, i) => <option key={d.deviceId} value={d.deviceId}>{d.label || `Camera ${i + 1}`}</option>)}
-            </select>
-          </div>
-        )}
-      </div>
+    <Box
+      minH="100vh"
+      bg="gray.50"
+      p={{ base: 4, md: 8 }}
+      fontFamily="Inter, Roboto, sans-serif"
+      color="black"
+    >
+      {/* Toast Notification */}
+      {toastMsg && (
+        <Box
+          position="fixed"
+          top={4}
+          right={4}
+          zIndex={9999}
+          bg="black"
+          color="white"
+          px={5}
+          py={3}
+          borderRadius="lg"
+          boxShadow="2xl"
+          fontSize="sm"
+          fontWeight="medium"
+          display="flex"
+          alignItems="center"
+          gap={2}
+        >
+          <Check size={16} />
+          {toastMsg}
+        </Box>
+      )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left 7 Cols: Camera Feed */}
-        <div className="lg:col-span-7 space-y-4">
-          <div className="relative aspect-video bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden shadow-md flex items-center justify-center">
-            <video ref={videoRef} autoPlay playsInline muted className={`w-full h-full object-cover ${cameraActive ? "block" : "hidden"}`} />
-            <canvas ref={canvasRef} className="hidden" />
+      <Box maxW="1280px" mx="auto">
+        {/* Header Bar */}
+        <Box
+          bg="white"
+          borderWidth="1px"
+          borderColor="gray.200"
+          borderRadius="2xl"
+          p={{ base: 5, md: 6 }}
+          mb={6}
+          shadow="xs"
+        >
+          <Flex
+            direction={{ base: "column", md: "row" }}
+            justify="space-between"
+            align={{ base: "flex-start", md: "center" }}
+            gap={4}
+          >
+            <Box>
+              <Flex align="center" gap={3} mb={1}>
+                <Box bg="black" color="white" p={2} borderRadius="lg">
+                  <Camera size={22} />
+                </Box>
+                <Heading
+                  size="xl"
+                  color="black"
+                  fontWeight="extrabold"
+                  letterSpacing="tight"
+                >
+                  Live AI Reticle Leaf Scanner
+                </Heading>
+              </Flex>
+              <Text fontSize="sm" color="gray.600" mt={1}>
+                Real-time crop leaf pathology diagnostics.
+              </Text>
+            </Box>
 
-            {cameraActive && !result && (
-              <div className="absolute inset-0 border-[24px] border-slate-950/40 pointer-events-none flex items-center justify-center">
-                <div className="w-48 h-48 border-2 border-dashed border-white/60 rounded-2xl relative flex items-center justify-center">
-                  <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-emerald-400 -translate-x-1 -translate-y-1" />
-                  <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-emerald-400 translate-x-1 -translate-y-1" />
-                  <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-emerald-400 -translate-x-1 translate-y-1" />
-                  <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-emerald-400 translate-x-1 translate-y-1" />
-                  <span className="text-[10px] font-bold text-white bg-slate-900/80 px-2.5 py-1 rounded-full uppercase tracking-wider animate-pulse">Align Crop Leaf</span>
-                </div>
-              </div>
+            {cameraActive && devices.length > 1 && (
+              <HStack gap={2}>
+                <Text
+                  fontSize="xs"
+                  fontWeight="bold"
+                  color="gray.500"
+                  textTransform="uppercase"
+                >
+                  Camera Device:
+                </Text>
+                <select
+                  style={{
+                    height: "34px",
+                    paddingLeft: "10px",
+                    paddingRight: "10px",
+                    borderRadius: "6px",
+                    border: "1px solid #000000",
+                    backgroundColor: "#ffffff",
+                    color: "#000000",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    outline: "none",
+                  }}
+                  value={selectedDeviceId}
+                  onChange={(e) => {
+                    setSelectedDeviceId(e.target.value);
+                    startCamera();
+                  }}
+                >
+                  {devices.map((d, i) => (
+                    <option key={d.deviceId} value={d.deviceId}>
+                      {d.label || `Camera ${i + 1}`}
+                    </option>
+                  ))}
+                </select>
+              </HStack>
             )}
+          </Flex>
+        </Box>
 
-            {scanActive && <div className="absolute inset-x-0 h-1 bg-emerald-400 shadow-[0_0_12px_#34d399] animate-scanner-laser top-0 pointer-events-none" />}
+        {/* Main Grid */}
+        <Grid
+          templateColumns={{ base: "1fr", lg: "7fr 5fr" }}
+          gap={6}
+          alignContent="start"
+        >
+          {/* Left Column: Camera Viewport */}
+          <GridItem>
+            <Stack gap={4}>
+              <Box
+                position="relative"
+                width="100%"
+                aspectRatio={16 / 9}
+                bg="black"
+                borderWidth="2px"
+                borderColor="black"
+                borderRadius="2xl"
+                overflow="hidden"
+                shadow="md"
+                display="flex"
+                alignItems="center"
+                justifyContent="center"
+              >
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                    display: cameraActive ? "block" : "none",
+                  }}
+                />
+                <canvas ref={canvasRef} style={{ display: "none" }} />
 
-            {!cameraActive && (
-              <div className="text-center p-8 text-slate-400 max-w-sm space-y-4">
-                <CameraOff className="w-10 h-10 mx-auto text-slate-600" />
-                <div className="space-y-1">
-                  <h4 className="font-bold text-slate-200 text-sm">Webcam Reticle Scanner Offline</h4>
-                  <p className="text-xs text-slate-400 leading-relaxed">Start the webcam to perform live pathology diagnostics on plant leaves.</p>
-                </div>
-                <button onClick={startCamera} className="btn btn-primary w-full py-3 text-xs flex items-center justify-center gap-2 rounded-xl shadow-xs">
-                  <Play className="w-4 h-4 fill-white" /> Start Live Reticle Camera
-                </button>
-                <div className="pt-3 border-t border-slate-800 space-y-2">
-                  <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Or upload a field leaf photo:</p>
-                  <input type="file" accept="image/*" capture="environment" className="hidden" ref={fallbackInputRef} onChange={handleFallbackCapture} />
-                  <button onClick={() => fallbackInputRef.current?.click()} className="w-full btn btn-secondary text-slate-300 border-slate-700 hover:bg-slate-800 text-xs py-2.5 rounded-xl flex items-center justify-center gap-1.5">
-                    <Camera className="w-3.5 h-3.5" /> Select Leaf Image File
-                  </button>
-                </div>
-              </div>
+                {/* Reticle Targeting Frame Overlay */}
+                {cameraActive && !result && (
+                  <Box
+                    position="absolute"
+                    inset={0}
+                    borderWidth="24px"
+                    borderColor="rgba(0,0,0,0.4)"
+                    pointerEvents="none"
+                    display="flex"
+                    alignItems="center"
+                    justifyContent="center"
+                  >
+                    <Box
+                      width="200px"
+                      height="200px"
+                      borderWidth="2px"
+                      borderStyle="dashed"
+                      borderColor="rgba(255,255,255,0.7)"
+                      borderRadius="2xl"
+                      position="relative"
+                      display="flex"
+                      alignItems="center"
+                      justifyContent="center"
+                    >
+                      <Box
+                        position="absolute"
+                        top="-2px"
+                        left="-2px"
+                        width="16px"
+                        height="16px"
+                        borderTopWidth="3px"
+                        borderLeftWidth="3px"
+                        borderColor="white"
+                      />
+                      <Box
+                        position="absolute"
+                        top="-2px"
+                        right="-2px"
+                        width="16px"
+                        height="16px"
+                        borderTopWidth="3px"
+                        borderRightWidth="3px"
+                        borderColor="white"
+                      />
+                      <Box
+                        position="absolute"
+                        bottom="-2px"
+                        left="-2px"
+                        width="16px"
+                        height="16px"
+                        borderBottomWidth="3px"
+                        borderLeftWidth="3px"
+                        borderColor="white"
+                      />
+                      <Box
+                        position="absolute"
+                        bottom="-2px"
+                        right="-2px"
+                        width="16px"
+                        height="16px"
+                        borderBottomWidth="3px"
+                        borderRightWidth="3px"
+                        borderColor="white"
+                      />
+                      <Badge
+                        bg="black"
+                        color="white"
+                        px={3}
+                        py={1}
+                        borderRadius="full"
+                        fontSize="10px"
+                        fontWeight="bold"
+                        letterSpacing="wider"
+                      >
+                        ALIGN CROP LEAF
+                      </Badge>
+                    </Box>
+                  </Box>
+                )}
+
+                {/* Scanner Laser Animation Bar */}
+                {scanActive && (
+                  <Box
+                    position="absolute"
+                    left={0}
+                    right={0}
+                    top={0}
+                    height="3px"
+                    bg="white"
+                    boxShadow="0 0 12px #ffffff"
+                    className="animate-scanner-laser"
+                  />
+                )}
+
+                {/* Offline State Card */}
+                {!cameraActive && (
+                  <Box textAlign="center" p={8} maxW="360px">
+                    <CameraOff
+                      size={44}
+                      color="#71717a"
+                      style={{ margin: "0 auto 16px" }}
+                    />
+                    <Heading size="sm" color="white" fontWeight="bold" mb={1}>
+                      Webcam Reticle Scanner Offline
+                    </Heading>
+                    <Text
+                      fontSize="xs"
+                      color="gray.400"
+                      mb={6}
+                      lineHeight="relaxed"
+                    >
+                      Start your camera to perform real-time AI pathology
+                      diagnostic scans on crop leaves.
+                    </Text>
+                    <Button
+                      onClick={startCamera}
+                      bg="white"
+                      color="black"
+                      _hover={{ bg: "gray.200" }}
+                      width="100%"
+                      size="sm"
+                      height="40px"
+                      fontWeight="bold"
+                      mb={4}
+                    >
+                      <Play
+                        size={16}
+                        style={{ marginRight: 8, fill: "black" }}
+                      />{" "}
+                      Start Live Reticle Camera
+                    </Button>
+
+                    <Separator mb={4} borderColor="gray.800" />
+
+                    <Text
+                      fontSize="10px"
+                      color="gray.500"
+                      fontWeight="bold"
+                      textTransform="uppercase"
+                      mb={2}
+                    >
+                      Or Upload Field Leaf Photo
+                    </Text>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      style={{ display: "none" }}
+                      ref={fallbackInputRef}
+                      onChange={handleFallbackCapture}
+                    />
+                    <Button
+                      onClick={() => fallbackInputRef.current?.click()}
+                      variant="outline"
+                      borderColor="gray.700"
+                      color="white"
+                      _hover={{ bg: "gray.900" }}
+                      width="100%"
+                      size="sm"
+                      height="36px"
+                    >
+                      <Upload size={14} style={{ marginRight: 6 }} /> Select
+                      Leaf Image File
+                    </Button>
+                  </Box>
+                )}
+
+                {/* Loading State Overlay */}
+                {loading && (
+                  <Box
+                    position="absolute"
+                    inset={0}
+                    bg="rgba(0, 0, 0, 0.85)"
+                    backdropFilter="blur(4px)"
+                    display="flex"
+                    flexDirection="column"
+                    alignItems="center"
+                    justifyContent="center"
+                    color="white"
+                  >
+                    <Spinner size="xl" color="white" mb={3} />
+                    <Heading size="xs" color="white" fontWeight="bold">
+                      Analyzing Leaf Pathology Telemetry...
+                    </Heading>
+                    <Text
+                      fontSize="10px"
+                      color="gray.400"
+                      mt={1}
+                      letterSpacing="widest"
+                      textTransform="uppercase"
+                    >
+                      Gemini 2.5 Flash Vision Multimodal
+                    </Text>
+                  </Box>
+                )}
+              </Box>
+
+              {/* Action Controls Toolbar */}
+              {cameraActive && (
+                <Flex gap={3}>
+                  <Button
+                    onClick={stopCamera}
+                    variant="outline"
+                    borderColor="gray.300"
+                    color="black"
+                    bg="white"
+                    _hover={{ bg: "gray.100" }}
+                    flex="1"
+                    size="sm"
+                    height="40px"
+                  >
+                    <CameraOff size={16} style={{ marginRight: 6 }} /> Stop
+                    Camera
+                  </Button>
+                  <Button
+                    onClick={captureFrameAndDiagnose}
+                    disabled={loading}
+                    bg="black"
+                    color="white"
+                    _hover={{ bg: "gray.800" }}
+                    flex="2"
+                    size="sm"
+                    height="40px"
+                    fontWeight="bold"
+                  >
+                    <Sparkles size={16} style={{ marginRight: 6 }} /> Capture &
+                    Diagnose Leaf
+                  </Button>
+                </Flex>
+              )}
+
+              {error && (
+                <Box
+                  p={4}
+                  borderWidth="1px"
+                  borderColor="black"
+                  bg="white"
+                  borderRadius="xl"
+                  display="flex"
+                  alignItems="center"
+                  gap={3}
+                >
+                  <AlertCircle size={18} color="black" />
+                  <Text fontSize="xs" color="black" fontWeight="semibold">
+                    {error}
+                  </Text>
+                </Box>
+              )}
+            </Stack>
+          </GridItem>
+
+          {/* Right Column: Diagnostic Pathology Report */}
+          <GridItem>
+            {!result ? (
+              <Box
+                bg="white"
+                borderWidth="1px"
+                borderColor="gray.200"
+                borderRadius="2xl"
+                p={8}
+                minH="420px"
+                display="flex"
+                flexDirection="column"
+                alignItems="center"
+                justifyContent="center"
+                textAlign="center"
+                shadow="xs"
+              >
+                <Camera
+                  size={44}
+                  color="#a1a1aa"
+                  style={{ marginBottom: 16 }}
+                />
+                <Heading size="sm" color="black" fontWeight="bold" mb={1}>
+                  Diagnostic Pathology Report
+                </Heading>
+                <Text
+                  fontSize="xs"
+                  color="gray.500"
+                  maxW="260px"
+                  lineHeight="relaxed"
+                >
+                  Capture a crop leaf image via webcam reticle or upload a photo
+                  to generate a real-time diagnostic report.
+                </Text>
+              </Box>
+            ) : (
+              <Box
+                bg="white"
+                borderWidth="1px"
+                borderColor="gray.200"
+                borderRadius="2xl"
+                p={{ base: 5, md: 6 }}
+                shadow="xs"
+              >
+                <Flex
+                  align="center"
+                  justify="space-between"
+                  mb={4}
+                  pb={3}
+                  borderBottom="1px solid"
+                  borderColor="gray.200"
+                >
+                  <Box>
+                    <Text
+                      fontSize="10px"
+                      fontWeight="bold"
+                      color="gray.500"
+                      textTransform="uppercase"
+                      letterSpacing="wider"
+                    >
+                      Diagnostic Pathology Report
+                    </Text>
+                    <Heading
+                      size="lg"
+                      color="black"
+                      fontWeight="extrabold"
+                      mt={0.5}
+                    >
+                      {result.disease}
+                    </Heading>
+                  </Box>
+                  <Badge
+                    variant="outline"
+                    borderColor="black"
+                    color="black"
+                    fontSize="xs"
+                    fontWeight="bold"
+                    px={3}
+                    py={1}
+                  >
+                    {result.confidence}% Match
+                  </Badge>
+                </Flex>
+
+                <SimpleGrid columns={2} gap={3} mb={5}>
+                  <Box
+                    bg="gray.50"
+                    p={3.5}
+                    borderRadius="xl"
+                    borderWidth="1px"
+                    borderColor="gray.200"
+                  >
+                    <Text
+                      fontSize="10px"
+                      color="gray.500"
+                      fontWeight="bold"
+                      textTransform="uppercase"
+                    >
+                      Target Crop
+                    </Text>
+                    <Text
+                      fontSize="sm"
+                      fontWeight="bold"
+                      color="black"
+                      mt={0.5}
+                    >
+                      {result.crop}
+                    </Text>
+                  </Box>
+                  <Box
+                    bg="gray.50"
+                    p={3.5}
+                    borderRadius="xl"
+                    borderWidth="1px"
+                    borderColor="gray.200"
+                  >
+                    <Text
+                      fontSize="10px"
+                      color="gray.500"
+                      fontWeight="bold"
+                      textTransform="uppercase"
+                    >
+                      Vision Engine
+                    </Text>
+                    <Text
+                      fontSize="xs"
+                      fontWeight="bold"
+                      color="black"
+                      mt={0.5}
+                    >
+                      Gemini 2.5 Flash
+                    </Text>
+                  </Box>
+                </SimpleGrid>
+
+                <Box mb={5}>
+                  <Text
+                    fontSize="xs"
+                    fontWeight="bold"
+                    color="black"
+                    textTransform="uppercase"
+                    mb={2}
+                  >
+                    Observed Symptoms
+                  </Text>
+                  <VStack align="stretch" gap={1.5}>
+                    {result.symptoms.map((s, i) => (
+                      <Text
+                        key={i}
+                        fontSize="xs"
+                        color="gray.700"
+                        lineHeight="relaxed"
+                      >
+                        • {s}
+                      </Text>
+                    ))}
+                  </VStack>
+                </Box>
+
+                <Box pt={4} borderTop="1px solid" borderColor="gray.200" mb={6}>
+                  <Text
+                    fontSize="xs"
+                    fontWeight="bold"
+                    color="black"
+                    textTransform="uppercase"
+                    mb={2}
+                  >
+                    Recommended Actionable Treatment
+                  </Text>
+                  <VStack align="stretch" gap={2}>
+                    {result.treatment.map((t, i) => (
+                      <Box
+                        key={i}
+                        bg="gray.50"
+                        p={3}
+                        borderRadius="lg"
+                        borderWidth="1px"
+                        borderColor="gray.200"
+                      >
+                        <Text
+                          fontSize="xs"
+                          color="black"
+                          fontWeight="semibold"
+                          lineHeight="relaxed"
+                        >
+                          {i + 1}. {t}
+                        </Text>
+                      </Box>
+                    ))}
+                  </VStack>
+                </Box>
+
+                <Button
+                  onClick={() => window.print()}
+                  variant="outline"
+                  borderColor="black"
+                  color="black"
+                  _hover={{ bg: "black", color: "white" }}
+                  width="100%"
+                  size="sm"
+                  height="40px"
+                  fontWeight="bold"
+                >
+                  <Printer size={16} style={{ marginRight: 8 }} /> Print
+                  Diagnostic Report
+                </Button>
+              </Box>
             )}
-
-            {loading && (
-              <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-xs flex flex-col items-center justify-center text-white space-y-3">
-                <RefreshCw className="w-7 h-7 animate-spin text-emerald-400" />
-                <div className="text-center space-y-1">
-                  <h4 className="font-bold text-sm">Analyzing Leaf Telemetry...</h4>
-                  <p className="text-[10px] font-mono text-emerald-400 uppercase tracking-widest">Gemini 2.5 Flash Multimodal Vision</p>
-                </div>
-              </div>
-            )}
-
-            {result && cameraActive && (
-              <div className="absolute inset-0 border-[24px] border-slate-950/50 pointer-events-none flex items-center justify-center">
-                <div className="w-48 h-48 border-2 border-emerald-400 rounded-2xl relative flex items-center justify-center">
-                  <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-emerald-500 text-slate-950 px-3.5 py-1 rounded-full font-bold text-xs flex items-center gap-1.5 shadow-md whitespace-nowrap">
-                    <Sparkles className="w-3.5 h-3.5" /> {result.disease} ({result.confidence}%)
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {cameraActive && (
-            <div className="flex gap-3">
-              <button onClick={stopCamera} className="btn btn-secondary flex-1 py-3 text-xs flex items-center justify-center gap-2 rounded-xl">
-                <CameraOff className="w-4 h-4" /> Stop Camera
-              </button>
-              <button onClick={captureFrameAndDiagnose} disabled={loading} className="btn btn-primary flex-[2] py-3 text-xs flex items-center justify-center gap-2 rounded-xl shadow-xs">
-                <Sparkles className="w-4 h-4" /> Capture & Diagnose Leaf
-              </button>
-            </div>
-          )}
-
-          {error && (
-            <div className="p-4 border border-rose-200 bg-rose-50 rounded-xl flex items-start gap-2.5 text-xs text-rose-800 font-medium">
-              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" /> {error}
-            </div>
-          )}
-        </div>
-
-        {/* Right 5 Cols: Diagnostic Pathology Report Card */}
-        <div className="lg:col-span-5">
-          {!result ? (
-            <div className="p-12 text-center bg-white border border-slate-200 rounded-2xl h-full min-h-[420px] flex flex-col justify-center items-center space-y-3 shadow-xs">
-              <Camera className="w-10 h-10 text-slate-300 animate-pulse" />
-              <h3 className="font-bold text-sm text-slate-800">Diagnostic Pathology Report</h3>
-              <p className="text-xs text-slate-500 max-w-xs leading-relaxed">
-                Capture a crop leaf image via webcam or upload to generate a real-time diagnostic report.
-              </p>
-            </div>
-          ) : (
-            <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-5 shadow-xs animate-fade-in">
-              <div className="flex items-center justify-between border-b border-slate-200/80 pb-4">
-                <div>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">DIAGNOSIS PATHOLOGY</span>
-                  <h3 className="font-black text-xl text-slate-900 mt-1">{result.disease}</h3>
-                </div>
-                <span className="text-xs font-mono font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full shadow-2xs">
-                  {result.confidence}% Match
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3.5 text-xs">
-                <div className="border border-slate-200 rounded-xl p-3.5 bg-slate-50/70 space-y-1">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase block tracking-wider">Target Crop</span>
-                  <span className="font-bold text-slate-900 text-sm block">{result.crop}</span>
-                </div>
-                <div className="border border-slate-200 rounded-xl p-3.5 bg-slate-50/70 space-y-1">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase block tracking-wider">Vision Engine</span>
-                  <span className="font-bold text-slate-900 text-xs block">Gemini 2.5 Flash</span>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Observed Symptoms</h4>
-                <ul className="list-disc list-inside space-y-1.5 text-slate-700 text-xs pl-1 leading-relaxed font-medium">
-                  {result.symptoms.map((s, i) => <li key={i}>{s}</li>)}
-                </ul>
-              </div>
-
-              <div className="pt-3 border-t border-slate-200/80 space-y-2">
-                <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Recommended Treatment</h4>
-                <ol className="list-decimal list-inside space-y-1.5 text-slate-800 text-xs pl-1 font-semibold leading-relaxed">
-                  {result.treatment.map((t, i) => <li key={i}>{t}</li>)}
-                </ol>
-              </div>
-
-              <button onClick={() => window.print()} className="w-full btn btn-secondary text-xs py-3 rounded-xl flex items-center justify-center gap-2">
-                <Download className="w-4 h-4" /> Print Diagnostic Report
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
+          </GridItem>
+        </Grid>
+      </Box>
+    </Box>
   );
 }
