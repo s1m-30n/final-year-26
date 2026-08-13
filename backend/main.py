@@ -161,12 +161,17 @@ LANGUAGE_CODES = {
 }
 
 # --- Request Models ---
+class HistoryItem(BaseModel):
+    sender: str
+    text: str
+
 class QueryRequest(BaseModel):
     query: str
     language: str
     gemini_key: Optional[str] = None
     hf_token: Optional[str] = None
     pipeline_mode: Optional[str] = "pivot"
+    history: Optional[List[HistoryItem]] = None
 
 class DocumentRequest(BaseModel):
     title: str
@@ -236,7 +241,6 @@ def translate_text(text: str, src_lang: str, tgt_lang: str, hf_token: Optional[s
 
 def simulate_translation_fallback(text: str, src_lang: str, tgt_lang: str) -> str:
     """Mock fallback translation mapping common agricultural phrases if API is offline."""
-    # Let's provide basic translations to keep system running offline
     dictionary = {
         "Nigerian Pidgin": {
             "how i fit cure cassava mosaic disease?": "How can I cure cassava mosaic disease?",
@@ -261,11 +265,9 @@ def simulate_translation_fallback(text: str, src_lang: str, tgt_lang: str) -> st
     # Check dialect to English
     if tgt_lang == "English":
         lang_dict = dictionary.get(src_lang, {})
-        # First check for exact matches
         for phrase, eng in lang_dict.items():
             if phrase == text_lower:
                 return eng
-        # Fallback to substring matching if query is short
         if len(text_lower.split()) < 6:
             for phrase, eng in lang_dict.items():
                 if phrase in text_lower or text_lower in phrase:
@@ -275,11 +277,9 @@ def simulate_translation_fallback(text: str, src_lang: str, tgt_lang: str) -> st
     # Check English to dialect
     if src_lang == "English":
         lang_dict = dictionary.get(tgt_lang, {})
-        # First check for exact matches
         for phrase, eng in lang_dict.items():
             if eng.lower() == text_lower:
                 return phrase.capitalize()
-        # Fallback to substring matching only if target is short
         if len(text_lower.split()) < 6:
             for phrase, eng in lang_dict.items():
                 if eng.lower() in text_lower:
@@ -303,7 +303,7 @@ def generate_gemini_response(prompt: str, api_key: str) -> str:
         ],
         "generationConfig": {
             "temperature": 0.2,
-            "maxOutputTokens": 350
+            "maxOutputTokens": 800
         }
     }
     
@@ -311,7 +311,6 @@ def generate_gemini_response(prompt: str, api_key: str) -> str:
         response = requests.post(url, headers=headers, json=payload, timeout=15)
         if response.status_code == 200:
             data = response.json()
-            # Extract text from response structure
             return data["candidates"][0]["content"]["parts"][0]["text"]
         else:
             raise HTTPException(status_code=response.status_code, detail=f"Gemini API returned error: {response.text}")
@@ -325,21 +324,29 @@ async def process_query(req: QueryRequest):
     gemini_key, hf_token = get_api_keys(req.gemini_key, req.hf_token)
     
     if not gemini_key:
-        raise HTTPException(status_code=400, detail="Gemini API Key is required. Please set it in Settings.")
+        raise HTTPException(status_code=400, detail="Gemini API Key is missing. Ensure GEMINI_API_KEY is configured in backend environment.")
 
     pipeline_logs = []
     mode = req.pipeline_mode or "pivot"
     
     pipeline_logs.append({"stage": "Pipeline Settings", "message": f"Running RAG pipeline in Mode: {mode.upper()}"})
     
+    # Format history turns for context memory
+    history_text = ""
+    if req.history and len(req.history) > 0:
+        pipeline_logs.append({"stage": "Context Memory", "message": f"Incorporating past {len(req.history)} conversation turn(s) for memory."})
+        history_text = "\nRECENT CONVERSATION HISTORY:\n"
+        for item in req.history[-4:]:  # last 4 turns
+            role_label = "Farmer" if item.sender == "user" else "Extension Agent"
+            history_text += f"{role_label}: {item.text}\n"
+        history_text += "---\n"
+
     if mode == "direct":
-        # Direct Mode: Query goes straight through, translate internally only for database matching
         pipeline_logs.append({"stage": "Translation (Input) Bypassed", "message": f"Direct prompt generated in source dialect: {req.language}"})
         pipeline_logs.append({"stage": "Translation (Internal Matching)", "message": "Running internal query translation for ChromaDB key terms..."})
         english_query = translate_text(req.query, req.language, "English", hf_token)
         pipeline_logs.append({"stage": "Translation (Internal Matching) Done", "message": f"Internal query key: '{english_query}'"})
     else:
-        # Pivot Mode: Full NLLB translation
         pipeline_logs.append({"stage": "Translation (Input)", "message": f"Translating query from {req.language} to English..."})
         english_query = translate_text(req.query, req.language, "English", hf_token)
         pipeline_logs.append({"stage": "Translation (Input) Done", "message": f"English query: '{english_query}'"})
@@ -347,7 +354,6 @@ async def process_query(req: QueryRequest):
     # 2. Vector DB Query (ChromaDB)
     pipeline_logs.append({"stage": "Vector DB Search", "message": "Searching ChromaDB vector store for context..."})
     try:
-        # We query the DB for the top-3 most similar document chunks
         results = collection.query(
             query_texts=[english_query],
             n_results=3
@@ -360,8 +366,6 @@ async def process_query(req: QueryRequest):
             for i in range(len(results["documents"][0])):
                 doc_text = results["documents"][0][i]
                 metadata = results["metadatas"][0][i]
-                # Cosine distance returns 0 (most similar) to 2 (least similar). 
-                # Convert to simple confidence percentage score for display:
                 distance = results["distances"][0][i] if "distances" in results and results["distances"] else 0.5
                 score = round((1 - distance) * 100, 2)
                 
@@ -386,66 +390,64 @@ async def process_query(req: QueryRequest):
 
     # 3. Construct Prompt & Generate Response
     if mode == "direct":
-        # Prompt Gemini to answer DIRECTLY in the source dialect, utilizing the provided context
         prompt = f"""
-You are an expert Agricultural Extension Agent specializing in Nigerian agriculture.
-A farmer is asking you a question in {req.language}.
-You MUST respond directly, naturally, and natively in {req.language} (e.g. if the language is Nigerian Pidgin, write exclusively in authentic West African / Nigerian Pidgin; if Hausa, write in Hausa, etc.).
-Do not provide English explanations. Speak directly to the farmer.
+You are an expert Agricultural Extension Officer specializing in Nigerian farming systems across all geopolitical zones (South-West, South-East, South-South, North-Central, North-West, North-East).
+A smallholder farmer is speaking to you in {req.language}.
+You MUST respond directly, naturally, and natively in {req.language} (e.g. if Nigerian Pidgin, write exclusively in authentic Nigerian Pidgin; if Hausa, write in Hausa; if Igbo, write in Igbo; if Yoruba, write in Yoruba).
 
-Here are few-shot dialect examples to guide your tone and vocabulary:
-- Nigerian Pidgin: "Farmer, no stress! If cassava leaf dey turn yellow with green spots, na Cassava Mosaic Disease. What to do: 1. Uproot infected plants quick quick so whiteflies no go spread am. 2. Plant disease-resistant varieties like TME 419. 3. Spray neem oil water mix to drive whiteflies away."
-- Hausa: "Sannu da zuwa manomi. Idan ganyen rogo yana zama rawaya, wannan cutar mosaic ce. Matakai: 1. Cire shuka mai cuta da wuri. 2. Yi amfani da irin rogo mai juriya."
-- Igbo: "Nnọọ dinta/onye ọrụ ugbo. Ọ bụrụ na akwụkwọ ji gị na-acha edo edo, ọ bụ ọrịa mosaic. Ihe ị ga-eme: 1. Wepụ osisi ahụ nwere ọrịa ngwa ngwa."
-- Yoruba: "Ẹ n lẹ agbẹ. Ti ewe ẹgẹ rẹ n yipada si yẹlo, arun mosaic ni. Awọn igbesẹ: 1. Fa ewe ti o ni arun tu lẹsẹkẹsẹ."
+{history_text}
 
-Provide accurate, step-by-step diagnostic and treatment advice based on the following verified manuals.
-If the answer cannot be found in the context, use your expert knowledge to provide the most helpful, safe advice for smallholder farming in Nigeria.
+Provide COMPLETE, step-by-step, highly practical local advice. Include:
+1. Diagnosis & Root Cause
+2. Immediate Action Steps (Cultural methods e.g. uprooting infected plants, organic sprays e.g. neem oil extract/wood ash/soap mix)
+3. Disease-resistant Nigerian varieties (e.g. TME 419 cassava, FARO 44 rice, SAMMAZ maize, etc.)
+4. Prevention & Sourcing Advice (IITA, NCRI, local ADP extension officers)
 
-Context Manuals (in English):
+Context Manuals:
 {context_text}
 
 Farmer's Query (in {req.language}):
 "{req.query}"
 
-CRITICAL CONSTRAINTS:
-- Respond natively in {req.language} using authentic grammar and dialect words.
-- Keep the response VERY CONCISE and short (STRICTLY UNDER 120 WORDS MAX).
-- Use brief bullet points for immediate actionable steps.
-- Focus strictly on practical treatment and prevention steps.
+CRITICAL INSTRUCTIONS:
+- Speak natively in {req.language} with local warmth and respect.
+- Format with clear bullet points and bold text so it is easy to read.
+- Provide a full, complete answer without cutting off.
 """
         pipeline_logs.append({"stage": "LLM Synthesis (Direct Dialect)", "message": f"Generating response natively in {req.language} using Gemini..."})
         final_response = generate_gemini_response(prompt, gemini_key)
         pipeline_logs.append({"stage": "LLM Synthesis Done", "message": "Direct dialect response successfully synthesized."})
         
-        # Bypassed output translation
         english_response = "[Bypassed in Direct Dialect RAG Mode]"
         pipeline_logs.append({"stage": "Translation (Output) Bypassed", "message": "Direct Dialect output bypassed translation layer."})
 
     else:
-        # Pivot Mode: standard English generation with translation back
         prompt = f"""
-You are an expert Agricultural Extension Agent specializing in Nigerian agriculture.
-Provide accurate, step-by-step diagnostic and treatment advice based on the following verified manuals.
-If the answer cannot be found in the context, use your expert knowledge to provide safe advice for smallholder farming in Nigeria.
+You are an expert Senior Agricultural Extension Officer specializing in Nigerian farming systems (Rainforest, Derived Savannah, Sudan Savannah).
+Provide clear, complete, and practical step-by-step diagnostic and agronomic advice for smallholder farmers in Nigeria based on the expert context below.
+
+{history_text}
 
 Context Manuals:
 {context_text}
 
-Farmer's Query:
+Farmer's Current Query:
 "{english_query}"
 
-CRITICAL CONSTRAINTS:
-- Be encouraging, practical, and direct to the point.
-- Outline 2-3 key action steps in short bullet points.
-- Keep the response VERY CONCISE (STRICTLY UNDER 120 WORDS MAX) so it is fast and easy to read on mobile.
-- Do not mention that you used "context" or "documents". Answer directly as an extension agent.
+FORMAT YOUR RESPONSE WITH THE FOLLOWING STRUCTURED HEADINGS:
+- **🌿 Diagnosis & Cause**: Briefly explain the crop condition or pest/disease cause in clear terms.
+- **⚡ Immediate Action Steps**: Give 2-4 clear, bulleted steps (cultural practices e.g., rouging infected plants, organic treatments e.g., neem oil solution, wood ash, or safe chemical controls).
+- **🛡️ Resistant Varieties & Long-Term Prevention**: Recommend specific Nigerian crop varieties (e.g. TME 419 / TMS 30572 cassava, FARO 44 / 52 rice, SAMMAZ 15 maize, etc.) and preventive soil/sanitation practices.
+- **📍 Local Sourcing & Advisory**: Mention local Nigerian extension contacts or institutes (IITA, NCRI, NIHORT, CRIN, local State ADP extension agents).
+
+CRITICAL INSTRUCTIONS:
+- Be encouraging, highly practical, and complete. Do not leave sentences unfinished.
+- Do NOT mention "according to the context" or "documents". Answer directly as an experienced extension worker.
 """
         pipeline_logs.append({"stage": "LLM Synthesis", "message": "Generating response in English using Gemini LLM..."})
         english_response = generate_gemini_response(prompt, gemini_key)
         pipeline_logs.append({"stage": "LLM Synthesis Done", "message": "English response successfully synthesized."})
 
-        # 5. Translate English response back to Dialect
         pipeline_logs.append({"stage": "Translation (Output)", "message": f"Translating final response back to {req.language}..."})
         final_response = translate_text(english_response, "English", req.language, hf_token)
         pipeline_logs.append({"stage": "Translation (Output) Done", "message": "Final response translated."})

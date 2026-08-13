@@ -1,22 +1,16 @@
 import { useState } from "react";
-import { Key, Globe, Eye, EyeOff, CheckCircle, XCircle, RefreshCw } from "lucide-react";
+import { Globe, CheckCircle, XCircle, RefreshCw, Cpu, Server } from "lucide-react";
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   backendUrl: string;
   setBackendUrl: (url: string) => void;
-  geminiKey: string;
-  setGeminiKey: (key: string) => void;
-  hfToken: string;
-  setHfToken: (token: string) => void;
 }
 
 export default function SettingsModal({
-  isOpen, onClose, backendUrl, setBackendUrl, geminiKey, setGeminiKey, hfToken, setHfToken,
+  isOpen, onClose, backendUrl, setBackendUrl
 }: SettingsModalProps) {
-  const [showGemini, setShowGemini] = useState(false);
-  const [showHf, setShowHf] = useState(false);
   const [testStatus, setTestStatus] = useState<"idle" | "testing" | "success" | "failed">("idle");
   const [statusMessage, setStatusMessage] = useState("");
 
@@ -24,20 +18,20 @@ export default function SettingsModal({
 
   const testConnection = async () => {
     setTestStatus("testing");
-    setStatusMessage("Connecting...");
+    setStatusMessage("Connecting to Agricultural Extension Backend...");
     try {
       const response = await fetch(`${backendUrl}/documents`, { method: "GET" });
       if (response.ok) {
         const data = await response.json();
         setTestStatus("success");
-        setStatusMessage(`Connected. ${data.length} documents in ChromaDB.`);
+        setStatusMessage(`Connected successfully! Server online with ${data.length} documents indexed in ChromaDB.`);
       } else {
         setTestStatus("failed");
-        setStatusMessage(`Backend returned ${response.status}.`);
+        setStatusMessage(`Backend returned status ${response.status}. Please check server logs.`);
       }
     } catch {
       setTestStatus("failed");
-      setStatusMessage("Could not connect. Make sure the backend is running.");
+      setStatusMessage("Could not connect to backend. Make sure the FastAPI server is running.");
     }
   };
 
@@ -45,79 +39,68 @@ export default function SettingsModal({
     <div className="modal-overlay">
       <div className="modal-content glassmorphism animate-fade-in">
         <div className="modal-header">
-          <h2 className="text-sm font-bold">Settings</h2>
+          <h2 className="text-sm font-bold flex items-center gap-2">
+            <Server className="w-4 h-4 text-emerald-600" /> Server & System Settings
+          </h2>
           <button onClick={onClose} className="close-btn">&times;</button>
         </div>
 
         <div className="modal-body space-y-5">
-          <p className="text-[11px] text-neutral-400">
-            Configure API keys for translation (NLLB) and response generation (Gemini).
+          <p className="text-xs text-slate-500 leading-relaxed">
+            Configure system backend endpoints and connection settings. All LLM and translation API credentials are securely managed server-side.
           </p>
 
           {/* Backend URL */}
           <div className="input-group">
-            <label className="label-text">
-              <Globe className="w-3.5 h-3.5" /> Backend URL
+            <label className="label-text flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+              <Globe className="w-3.5 h-3.5 text-slate-500" /> Backend API Server URL
             </label>
-            <input type="text" className="text-input" value={backendUrl} onChange={(e) => setBackendUrl(e.target.value)} placeholder="http://127.0.0.1:8000" />
+            <input
+              type="text"
+              className="text-input"
+              value={backendUrl}
+              onChange={(e) => setBackendUrl(e.target.value)}
+              placeholder="http://127.0.0.1:8000"
+            />
+            <p className="text-[11px] text-slate-400">
+              Point to your local or deployed FastAPI server instance.
+            </p>
           </div>
 
-          {/* Gemini Key */}
-          <div className="input-group">
-            <label className="label-text flex items-center justify-between w-full">
-              <span className="flex items-center gap-1">
-                <Key className="w-3.5 h-3.5" /> Gemini API Key
-              </span>
-              <a href="https://aistudio.google.com/" target="_blank" rel="noreferrer" className="text-[10px] text-neutral-400 hover:text-black underline">Get Key</a>
-            </label>
-            <div className="relative">
-              <input type={showGemini ? "text" : "password"} className="text-input pr-10" value={geminiKey} onChange={(e) => setGeminiKey(e.target.value)} placeholder="AIzaSy..." />
-              <button type="button" onClick={() => setShowGemini(!showGemini)} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-black">
-                {showGemini ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-              </button>
+          {/* Security Banner */}
+          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-1.5">
+            <div className="flex items-center gap-2 font-semibold text-slate-800">
+              <Cpu className="w-4 h-4 text-indigo-600" /> Server-Side Key Management Active
             </div>
-          </div>
-
-          {/* HuggingFace Token */}
-          <div className="input-group">
-            <label className="label-text flex items-center justify-between w-full">
-              <span className="flex items-center gap-1">
-                <Key className="w-3.5 h-3.5" /> HuggingFace Token
-              </span>
-              <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noreferrer" className="text-[10px] text-neutral-400 hover:text-black underline">Get Token</a>
-            </label>
-            <div className="relative">
-              <input type={showHf ? "text" : "password"} className="text-input pr-10" value={hfToken} onChange={(e) => setHfToken(e.target.value)} placeholder="hf_..." />
-              <button type="button" onClick={() => setShowHf(!showHf)} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-black">
-                {showHf ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-              </button>
-            </div>
-            <p className="text-[10px] text-neutral-400">Optional. Prevents rate-limit errors on NLLB calls.</p>
+            <p className="text-[11px] text-slate-500 leading-normal">
+              Gemini LLM and HuggingFace NLLB translation keys are securely configured in your backend environment (<code className="bg-slate-200 px-1 py-0.5 rounded text-[10px]">.env</code>).
+            </p>
           </div>
 
           {/* Connection Test */}
           <div className="pt-2">
-            <button onClick={testConnection} disabled={testStatus === "testing"} className="btn btn-secondary w-full text-xs">
-              {testStatus === "testing" ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : "Test Connection"}
+            <button onClick={testConnection} disabled={testStatus === "testing"} className="btn btn-secondary w-full text-xs py-2.5">
+              {testStatus === "testing" ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : "Test Server Connection"}
             </button>
 
             {testStatus !== "idle" && (
-              <div className={`mt-3 p-3 flex items-start gap-2 text-xs border ${
-                testStatus === "success" ? "border-neutral-300 bg-neutral-50" : testStatus === "testing" ? "border-neutral-200 bg-neutral-50" : "border-neutral-300 bg-neutral-50"
+              <div className={`mt-3 p-3 flex items-start gap-2.5 text-xs rounded-xl border ${
+                testStatus === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-900" : testStatus === "testing" ? "border-slate-200 bg-slate-50 text-slate-700" : "border-rose-200 bg-rose-50 text-rose-900"
               }`}>
-                {testStatus === "success" && <CheckCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />}
-                {testStatus === "failed" && <XCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />}
-                {testStatus === "testing" && <RefreshCw className="w-3.5 h-3.5 shrink-0 animate-spin mt-0.5" />}
-                <span>{statusMessage}</span>
+                {testStatus === "success" && <CheckCircle className="w-4 h-4 shrink-0 text-emerald-600 mt-0.5" />}
+                {testStatus === "failed" && <XCircle className="w-4 h-4 shrink-0 text-rose-600 mt-0.5" />}
+                {testStatus === "testing" && <RefreshCw className="w-4 h-4 shrink-0 animate-spin text-slate-500 mt-0.5" />}
+                <span className="leading-snug">{statusMessage}</span>
               </div>
             )}
           </div>
         </div>
 
-        <div className="modal-footer">
+        <div className="modal-footer border-t border-slate-100 pt-4 flex justify-end">
           <button onClick={onClose} className="btn btn-primary px-6 text-xs">Save & Close</button>
         </div>
       </div>
     </div>
   );
 }
+

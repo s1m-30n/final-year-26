@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   Box,
   Flex,
@@ -55,8 +55,6 @@ interface Message {
 
 interface ChatAssistantProps {
   backendUrl: string;
-  geminiKey: string;
-  hfToken: string;
   onNewLog: (stage: string, message: string) => void;
   onClearLogs: () => void;
   onSetPipelineData: (data: {
@@ -74,8 +72,6 @@ interface ChatAssistantProps {
 
 export default function ChatAssistant({
   backendUrl,
-  geminiKey,
-  hfToken,
   onNewLog,
   onClearLogs,
   onSetPipelineData,
@@ -84,17 +80,27 @@ export default function ChatAssistant({
   pipelineMode,
   setPipelineMode,
 }: ChatAssistantProps) {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "welcome",
-      sender: "agent",
-      text: "Welcome to the Agricultural RAG Extension Service. You can ask questions in English, Nigerian Pidgin, Hausa, Igbo or Yoruba. Send text, record voice, or upload a crop leaf image for diagnosis.",
-      timestamp: new Date().toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-    },
-  ]);
+  const [messages, setMessages] = useState<Message[]>(() => {
+    const saved = localStorage.getItem("rag_chat_messages");
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch {}
+    }
+    return [
+      {
+        id: "welcome",
+        sender: "agent",
+        text: "Welcome to the Agricultural RAG Extension Service. Ask agronomic & diagnostic questions in English, Nigerian Pidgin, Hausa, Igbo, or Yoruba. Send text, record voice, or upload a leaf image.",
+        timestamp: new Date().toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      },
+    ];
+  });
+
   const [inputText, setInputText] = useState("");
   const [loading, setLoading] = useState(false);
   const [recording, setRecording] = useState(false);
@@ -107,6 +113,12 @@ export default function ChatAssistant({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (messages.length > 0) {
+      localStorage.setItem("rag_chat_messages", JSON.stringify(messages));
+    }
+  }, [messages]);
 
   const showNotification = (msg: string) => {
     setToastMsg(msg);
@@ -202,6 +214,15 @@ export default function ChatAssistant({
       } catch {}
     }
 
+    // Collect recent history for multi-turn memory
+    const historyPayload = messages
+      .filter((m) => m.id !== "welcome")
+      .slice(-6)
+      .map((m) => ({
+        sender: m.sender,
+        text: m.text,
+      }));
+
     try {
       const response = await fetch(`${backendUrl}/query`, {
         method: "POST",
@@ -209,9 +230,8 @@ export default function ChatAssistant({
         body: JSON.stringify({
           query: textToSend,
           language: lang,
-          gemini_key: geminiKey,
-          hf_token: hfToken,
           pipeline_mode: pipelineMode,
+          history: historyPayload,
         }),
       });
       if (!response.ok) throw new Error(`Server returned code ${response.status}`);
@@ -252,7 +272,7 @@ export default function ChatAssistant({
         {
           id: Math.random().toString(),
           sender: "agent",
-          text: `Error: ${err.message}. Check your API key and backend server.`,
+          text: `Error: ${err.message}. Please verify the backend server status in Settings.`,
           timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         },
       ]);
@@ -334,8 +354,6 @@ export default function ChatAssistant({
 
     const formData = new FormData();
     formData.append("image", file);
-    if (geminiKey) formData.append("gemini_key", geminiKey);
-    if (hfToken) formData.append("hf_token", hfToken);
 
     try {
       const res = await fetch(`${backendUrl}/diagnose`, { method: "POST", body: formData });
@@ -353,7 +371,7 @@ export default function ChatAssistant({
           },
         ]);
       } else {
-        showNotification("Leaf diagnosis failed. Ensure Gemini API key is configured.");
+        showNotification("Leaf diagnosis failed. Please check backend server status.");
       }
     } catch {
       showNotification("Image diagnostic request error.");

@@ -28,8 +28,6 @@ import {
 
 interface LiveCameraScannerProps {
   backendUrl: string;
-  geminiKey: string;
-  hfToken: string;
   onNewLog: (stage: string, message: string) => void;
   onClearLogs: () => void;
 }
@@ -44,8 +42,6 @@ interface DiagnosisResult {
 
 export default function LiveCameraScanner({
   backendUrl,
-  geminiKey,
-  hfToken,
   onNewLog,
   onClearLogs,
 }: LiveCameraScannerProps) {
@@ -128,8 +124,6 @@ export default function LiveCameraScanner({
     try {
       const formData = new FormData();
       formData.append("image", file);
-      if (geminiKey) formData.append("gemini_key", geminiKey);
-      if (hfToken) formData.append("hf_token", hfToken);
       const res = await fetch(`${backendUrl}/diagnose`, {
         method: "POST",
         body: formData,
@@ -179,8 +173,6 @@ export default function LiveCameraScanner({
             "image",
             new File([blob], "scan.jpg", { type: "image/jpeg" }),
           );
-          if (geminiKey) formData.append("gemini_key", geminiKey);
-          if (hfToken) formData.append("hf_token", hfToken);
           try {
             const res = await fetch(`${backendUrl}/diagnose`, {
               method: "POST",

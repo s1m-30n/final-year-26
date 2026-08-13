@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { MessageSquare, Database, Cpu, Settings, Leaf, Camera, Globe, CloudSun, Bell, X, AlertTriangle } from "lucide-react";
+import { MessageSquare, Database, Cpu, Settings, Leaf, Camera, Globe, CloudSun, Bell, X, AlertTriangle, Menu } from "lucide-react";
 import ChatAssistant from "./components/ChatAssistant";
 import VectorDBExplorer from "./components/VectorDBExplorer";
 import PipelineVisualizer from "./components/PipelineVisualizer";
@@ -13,25 +13,14 @@ function App() {
   const [activeTab, setActiveTab] = useState<"chat" | "database" | "pipeline" | "scanner" | "partners" | "weather">("chat");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAlertsDrawerOpen, setIsAlertsDrawerOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [pipelineMode, setPipelineMode] = useState<"pivot" | "direct">("pivot");
 
   const [backendUrl, setBackendUrl] = useState(() => {
     return localStorage.getItem("rag_backend_url") || "http://127.0.0.1:8000";
   });
-  const [geminiKey, setGeminiKey] = useState(() => {
-    return localStorage.getItem("rag_gemini_key") || "";
-  });
-  const [hfToken, setHfToken] = useState(() => {
-    return localStorage.getItem("rag_hf_token") || "";
-  });
 
   useEffect(() => { localStorage.setItem("rag_backend_url", backendUrl); }, [backendUrl]);
-  useEffect(() => { localStorage.setItem("rag_gemini_key", geminiKey); }, [geminiKey]);
-  useEffect(() => { localStorage.setItem("rag_hf_token", hfToken); }, [hfToken]);
-
-  useEffect(() => {
-    if (!geminiKey) setIsSettingsOpen(true);
-  }, []);
 
   const [pipelineLogs, setPipelineLogs] = useState<{ stage: string; message: string }[]>([]);
   const [pipelineData, setPipelineData] = useState({
@@ -71,13 +60,30 @@ function App() {
 
   return (
     <div className="app-container">
-      <aside className="sidebar">
+      {/* Mobile Drawer Overlay Backdrop */}
+      {isMobileMenuOpen && (
+        <div
+          className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-40 md:hidden"
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      )}
+
+      {/* Sidebar (Desktop + Mobile Responsive Drawer) */}
+      <aside className={`sidebar ${isMobileMenuOpen ? "mobile-open" : ""}`}>
         <div>
-          <div className="sidebar-logo">
-            <div className="logo-badge">
-              <Leaf className="w-4 h-4" />
+          <div className="sidebar-logo justify-between md:justify-start">
+            <div className="flex items-center gap-3">
+              <div className="logo-badge">
+                <Leaf className="w-4 h-4" />
+              </div>
+              <h1>AgriRAG</h1>
             </div>
-            <h1>AgriRAG</h1>
+            <button
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="md:hidden p-1 text-slate-500 hover:text-slate-900"
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
           <nav className="sidebar-nav">
             {tabs.map((tab) => {
@@ -86,7 +92,10 @@ function App() {
                 <button
                   key={tab.id}
                   className={`sidebar-item ${activeTab === tab.id ? "active" : ""}`}
-                  onClick={() => setActiveTab(tab.id)}
+                  onClick={() => {
+                    setActiveTab(tab.id);
+                    setIsMobileMenuOpen(false);
+                  }}
                 >
                   <Icon className="w-4 h-4 shrink-0" />
                   <span>{tab.label}</span>
@@ -98,7 +107,10 @@ function App() {
 
         <div className="sidebar-footer">
           <button
-            onClick={() => setIsSettingsOpen(true)}
+            onClick={() => {
+              setIsSettingsOpen(true);
+              setIsMobileMenuOpen(false);
+            }}
             className="sidebar-item"
           >
             <Settings className="w-4 h-4 shrink-0" />
@@ -109,16 +121,23 @@ function App() {
 
       <main className="main-content">
         <header className="top-navbar">
-          <div className="flex items-center gap-3">
-            <h2 className="text-sm font-bold text-zinc-900 tracking-tight">
+          <div className="flex items-center gap-2.5">
+            <button
+              onClick={() => setIsMobileMenuOpen(true)}
+              className="md:hidden p-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-700 transition"
+              aria-label="Open Navigation Menu"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+            <h2 className="text-sm font-bold text-zinc-900 tracking-tight truncate">
               {pageTitles[activeTab]}
             </h2>
           </div>
           
-          <div className="flex items-center gap-3 relative">
-            <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-zinc-100 border border-zinc-200 text-[11px] font-medium text-zinc-600">
-              <span className={`w-1.5 h-1.5 rounded-full ${geminiKey ? "bg-emerald-500" : "bg-amber-500 animate-pulse"}`} />
-              <span>{geminiKey ? "Gemini Connected" : "Key Required"}</span>
+          <div className="flex items-center gap-2 md:gap-3 relative">
+            <div className="hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-[11px] font-medium text-emerald-800">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span>System Online</span>
             </div>
 
             {/* Notifications Bell Dropdown */}
@@ -134,9 +153,9 @@ function App() {
                 </span>
               </button>
 
-              {/* Sleek Notifications Popover Drawer */}
+              {/* Notifications Popover Drawer */}
               {isAlertsDrawerOpen && (
-                <div className="absolute right-0 mt-2 w-80 bg-white border border-slate-200 rounded-2xl shadow-2xl z-50 p-4 space-y-3 animate-fade-in">
+                <div className="absolute right-0 mt-2 w-72 sm:w-80 bg-white border border-slate-200 rounded-2xl shadow-2xl z-50 p-4 space-y-3 animate-fade-in">
                   <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
                     <h4 className="font-bold text-xs text-slate-900 flex items-center gap-1.5">
                       <AlertTriangle className="w-3.5 h-3.5 text-amber-500" /> Active Emergency Alerts
@@ -191,8 +210,6 @@ function App() {
           {activeTab === "chat" && (
             <ChatAssistant
               backendUrl={backendUrl}
-              geminiKey={geminiKey}
-              hfToken={hfToken}
               onNewLog={handleNewLog}
               onClearLogs={handleClearLogs}
               onSetPipelineData={handleSetPipelineData}
@@ -231,8 +248,6 @@ function App() {
           {activeTab === "scanner" && (
             <LiveCameraScanner
               backendUrl={backendUrl}
-              geminiKey={geminiKey}
-              hfToken={hfToken}
               onNewLog={handleNewLog}
               onClearLogs={handleClearLogs}
             />
@@ -245,13 +260,10 @@ function App() {
         onClose={() => setIsSettingsOpen(false)}
         backendUrl={backendUrl}
         setBackendUrl={setBackendUrl}
-        geminiKey={geminiKey}
-        setGeminiKey={setGeminiKey}
-        hfToken={hfToken}
-        setHfToken={setHfToken}
       />
     </div>
   );
 }
 
 export default App;
+
