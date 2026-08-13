@@ -169,8 +169,10 @@ class QueryRequest(BaseModel):
     query: str
     language: str
     gemini_key: Optional[str] = None
+    groq_key: Optional[str] = None
     hf_token: Optional[str] = None
     pipeline_mode: Optional[str] = "pivot"
+    provider: Optional[str] = "auto" # "auto" | "gemini" | "groq" | "ollama"
     history: Optional[List[HistoryItem]] = None
 
 class DocumentRequest(BaseModel):
@@ -181,15 +183,22 @@ class DocumentRequest(BaseModel):
     keywords: str
 
 # --- Helper Functions ---
-def get_api_keys(custom_gemini: Optional[str] = None, custom_hf: Optional[str] = None):
+def get_api_keys(custom_gemini: Optional[str] = None, custom_groq: Optional[str] = None, custom_hf: Optional[str] = None):
     """Retrieve API keys from request headers/body or environment variables."""
     gemini = custom_gemini
     if not gemini:
-        # Check environment variables case-insensitively
         for key in ["GEMINI_API_KEY", "Gemini_Api_Key", "gemini_api_key", "Gemini_API_Key"]:
             val = os.getenv(key)
             if val:
                 gemini = val
+                break
+                
+    groq = custom_groq
+    if not groq:
+        for key in ["GROQ_API_KEY", "Groq_Api_Key", "groq_api_key", "Groq_API_Key"]:
+            val = os.getenv(key)
+            if val:
+                groq = val
                 break
     
     hf = custom_hf
@@ -200,47 +209,44 @@ def get_api_keys(custom_gemini: Optional[str] = None, custom_hf: Optional[str] =
                 hf = val
                 break
                 
-    return gemini, hf
+    return gemini, groq, hf
 
-def translate_text(text: str, src_lang: str, tgt_lang: str, hf_token: Optional[str] = None) -> str:
-    """Translate text using HuggingFace NLLB serverless Inference API."""
+def translate_text(text: str, src_lang: str, tgt_lang: str, hf_token: Optional[str] = None, gemini_key: Optional[str] = None) -> str:
+    """Translate text accurately and naturally using Multi-Provider LLM Engine (Gemini / Groq / HF / Ollama)."""
     src_code = LANGUAGE_CODES.get(src_lang, "eng_Latn")
     tgt_code = LANGUAGE_CODES.get(tgt_lang, "eng_Latn")
     
-    if src_code == tgt_code:
+    if src_code == tgt_code or src_lang == tgt_lang:
         return text
 
-    api_url = "https://api-inference.huggingface.co/models/facebook/nllb-200-distilled-600M"
-    headers = {}
-    if hf_token:
-        headers["Authorization"] = f"Bearer {hf_token}"
-        
-    payload = {
-        "inputs": text,
-        "parameters": {
-            "src_lang": src_code,
-            "tgt_lang": tgt_code
-        }
-    }
-    
+    gemini_key, groq_key, hf_token = get_api_keys(gemini_key, None, hf_token)
+
+    # Use Multi-Provider LLM Engine for high-quality, fluent translation across Nigerian dialects
+    trans_prompt = f"""
+You are an expert translator specializing in West African languages (Yoruba, Hausa, Igbo, Nigerian Pidgin, and English).
+Translate the following agricultural extension response accurately, naturally, and completely from {src_lang} to {tgt_lang}.
+
+If {tgt_lang} is Yoruba, translate into clear, natural Yoruba (Yorùbá).
+If {tgt_lang} is Hausa, translate into clear, natural Hausa (Harshen Hausa).
+If {tgt_lang} is Igbo, translate into clear, natural Igbo (Asụsụ Igbo).
+If {tgt_lang} is Nigerian Pidgin, translate into authentic, natural Nigerian Pidgin.
+
+Do NOT add introductory text, commentary, or quotes. Return ONLY the direct translated text in {tgt_lang}.
+
+Text to translate:
+"{text}"
+"""
     try:
-        response = requests.post(api_url, headers=headers, json=payload, timeout=10)
-        if response.status_code == 200:
-            result = response.json()
-            if isinstance(result, list) and len(result) > 0:
-                return result[0].get("translation_text", text)
-            elif isinstance(result, dict) and "translation_text" in result:
-                return result["translation_text"]
-        
-        # Fallback if HuggingFace serverless API returns error / rate-limit
-        print(f"HF translation failed (status {response.status_code}): {response.text}")
-        return simulate_translation_fallback(text, src_lang, tgt_lang)
+        translated = generate_llm_response(trans_prompt, gemini_key=gemini_key, groq_key=groq_key, hf_token=hf_token).strip()
+        if translated and len(translated) > 5:
+            return translated
     except Exception as e:
-        print(f"Translation API error: {e}")
-        return simulate_translation_fallback(text, src_lang, tgt_lang)
+        print(f"LLM translation error: {e}")
+
+    return simulate_translation_fallback(text, src_lang, tgt_lang)
 
 def simulate_translation_fallback(text: str, src_lang: str, tgt_lang: str) -> str:
-    """Mock fallback translation mapping common agricultural phrases if API is offline."""
+    """Clean fallback translation mapping without bracketed prefix tags."""
     dictionary = {
         "Nigerian Pidgin": {
             "how i fit cure cassava mosaic disease?": "How can I cure cassava mosaic disease?",
@@ -272,7 +278,7 @@ def simulate_translation_fallback(text: str, src_lang: str, tgt_lang: str) -> st
             for phrase, eng in lang_dict.items():
                 if phrase in text_lower or text_lower in phrase:
                     return eng
-        return f"[Translated to English] {text}"
+        return text
         
     # Check English to dialect
     if src_lang == "English":
@@ -284,7 +290,7 @@ def simulate_translation_fallback(text: str, src_lang: str, tgt_lang: str) -> st
             for phrase, eng in lang_dict.items():
                 if eng.lower() in text_lower:
                     return phrase.capitalize()
-        return f"[{tgt_lang} Translation] {text}"
+        return text
 
     return text
 
@@ -303,12 +309,12 @@ def generate_gemini_response(prompt: str, api_key: str) -> str:
         ],
         "generationConfig": {
             "temperature": 0.2,
-            "maxOutputTokens": 800
+            "maxOutputTokens": 1500
         }
     }
     
     try:
-        response = requests.post(url, headers=headers, json=payload, timeout=15)
+        response = requests.post(url, headers=headers, json=payload, timeout=20)
         if response.status_code == 200:
             data = response.json()
             return data["candidates"][0]["content"]["parts"][0]["text"]
@@ -317,26 +323,209 @@ def generate_gemini_response(prompt: str, api_key: str) -> str:
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to communicate with Gemini LLM: {str(e)}")
 
+def generate_llm_response(prompt: str, gemini_key: Optional[str] = None, groq_key: Optional[str] = None, hf_token: Optional[str] = None, provider: str = "auto") -> str:
+    """Multi-provider LLM engine supporting Gemini 2.5 Flash, Groq Free Cloud API, HuggingFace Llama 3.3 70B, and local Ollama."""
+    
+    gemini_key, groq_key, hf_token = get_api_keys(gemini_key, groq_key, hf_token)
+
+    def call_groq(key: str) -> str:
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+        payload = {
+            "model": "llama-3.3-70b-versatile",
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.2
+        }
+        resp = requests.post(url, headers=headers, json=payload, timeout=20)
+        if resp.status_code == 200:
+            return resp.json()["choices"][0]["message"]["content"].strip()
+        raise Exception(f"Groq API error {resp.status_code}: {resp.text}")
+
+    def call_hf(token: str) -> str:
+        url = "https://router.huggingface.co/together/v1/chat/completions"
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+        payload = {
+            "model": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.2,
+            "max_tokens": 1000
+        }
+        resp = requests.post(url, headers=headers, json=payload, timeout=20)
+        if resp.status_code == 200:
+            return resp.json()["choices"][0]["message"]["content"].strip()
+        raise Exception(f"HF Router error {resp.status_code}: {resp.text}")
+
+    def call_ollama() -> str:
+        ollama_url = "http://localhost:11434/api/generate"
+        payload = {
+            "model": "llama3.2",
+            "prompt": prompt,
+            "stream": False
+        }
+        resp = requests.post(ollama_url, json=payload, timeout=25)
+        if resp.status_code == 200:
+            res_text = resp.json().get("response", "").strip()
+            if res_text:
+                return res_text
+        raise Exception(f"Ollama error {resp.status_code}: {resp.text}")
+
+    # Explicit provider selection if specified
+    if provider == "groq" and groq_key:
+        try:
+            return call_groq(groq_key)
+        except Exception as err:
+            print(f"[Groq Failover] {err}. Auto-routing to fallback providers...")
+    elif provider == "ollama":
+        try:
+            return call_ollama()
+        except Exception as err:
+            print(f"[Ollama Failover] {err}. Auto-routing...")
+    elif provider == "gemini" and gemini_key:
+        try:
+            return generate_gemini_response(prompt, gemini_key)
+        except Exception as err:
+            print(f"[Gemini Failover] {err}. Auto-routing...")
+
+    # Automatic Multi-Provider Fallback Sequence: Gemini -> Groq -> HuggingFace -> Local Ollama
+    if gemini_key:
+        try:
+            return generate_gemini_response(prompt, gemini_key)
+        except Exception as e:
+            print(f"Gemini API call failed or quota exceeded ({e}). Retrying with free Groq / HF / Ollama...")
+
+    if groq_key:
+        try:
+            return call_groq(groq_key)
+        except Exception as e:
+            print(f"Groq API call failed or 401 invalid key ({e}). Retrying with Hugging Face...")
+
+    if hf_token:
+        try:
+            return call_hf(hf_token)
+        except Exception as e:
+            print(f"HuggingFace Router call failed ({e}). Retrying with local Ollama...")
+
+    try:
+        return call_ollama()
+    except Exception:
+        pass
+
+def clean_agent_response(text: str) -> str:
+    """Strip LLM chain-of-thought and meta-reasoning prefixes, leaving only direct advisory content."""
+    if not text:
+        return text
+
+    lines = text.split("\n")
+    cleaned_lines = []
+    skip_mode = False
+    
+    for line in lines:
+        stripped = line.strip()
+        
+        # Skip meta step headings like "Step 1: ...", "## Step 2: ...", "### Step 3: ...", "Ìdìí 1: ..."
+        if (stripped.startswith("Step ") and ":" in stripped) or \
+           stripped.lower().startswith("## step ") or \
+           stripped.lower().startswith("### step ") or \
+           stripped.lower().startswith("ìdìí ") or \
+           stripped.lower().startswith("## ìdìí "):
+            skip_mode = True
+            continue
+            
+        if stripped.lower().startswith("here's the response") or \
+           stripped.lower().startswith("here is the response") or \
+           stripped.lower().startswith("the final answer is:") or \
+           stripped.lower().startswith("èyí ni àyẹ̀wò:"):
+            skip_mode = False
+            continue
+            
+        if skip_mode:
+            # Check if line is actual content (starts with bullets, headers, etc)
+            if stripped.startswith("- **") or stripped.startswith("## ") or stripped.startswith("**"):
+                skip_mode = False
+                cleaned_lines.append(line)
+            continue
+            
+        cleaned_lines.append(line)
+
+    result = "\n".join(cleaned_lines).strip()
+    
+    # Strip any leftover trailing duplicate final answer blocks
+    if "The final answer is:" in result:
+        result = result.split("The final answer is:")[0].strip()
+        
+    for phrase in ["The final answer is:", "Here is the response:", "Here's the response:", "Èyí ni àyẹ̀wò:"]:
+        if result.startswith(phrase):
+            result = result[len(phrase):].strip()
+            
+    return result
+
+# Query Intent Classifier
+AGRI_KEYWORDS = {
+    "cassava", "maize", "corn", "yam", "rice", "tomato", "pepper", "plantain", "banana", 
+    "mango", "citrus", "orange", "cocoa", "cowpea", "beans", "fertilizer", "soil", "pest", 
+    "disease", "leaf", "leaves", "stem", "root", "rot", "yield", "harvest", "plant", 
+    "planting", "seed", "seeds", "spacing", "irrigation", "water", "weather", "blight", 
+    "armyworm", "beetle", "fly", "weevil", "canker", "sigatoka", "anthracnose", "mosaic", 
+    "fungicide", "insecticide", "pesticide", "nematode", "poultry", "livestock", "npk", 
+    "urea", "manure", "compost", "crop", "crops", "farm", "farmer", "farming", "field",
+    "mound", "heap", "tuber", "grain", "fruit", "orchard", "nursery", "weed", "weeding",
+    "store", "storage", "storing", "preserve", "preservation", "keep", "keeping", "cure",
+    "grow", "growing", "care", "manage", "management", "barn", "silo"
+}
+
+DIAGNOSTIC_KEYWORDS = {
+    "disease", "pest", "sick", "cure", "treat", "treatment", "spot", "spots", "yellow", 
+    "yellowing", "rot", "decay", "bug", "worm", "caterpillar", "whitefly", "attack", 
+    "symptom", "symptoms", "blight", "mosaic", "fungus", "fungal", "canker", "wilt", 
+    "wilting", "die", "dying", "bitten", "infestation", "damage", "infected", "infection", 
+    "spray", "fungicide", "pesticide", "lesion", "lesions", "blister", "rust"
+}
+
+GREETING_META_PATTERNS = [
+    "hello", "hi", "hey", "good morning", "good afternoon", "good evening", "greetings",
+    "thank you", "thanks", "who are you", "what is your name", "what can you do", "help",
+    "kedu", "sannu", "bawo", "wetin dey", "how far", "how you dey", "good day", "daalu",
+    "nagode", "ese", "welcome", "morning", "afternoon", "evening", "who be you", "wetin you fit do"
+]
+
+def classify_query_intent(raw_query: str, eng_query: str) -> str:
+    raw_lower = raw_query.lower().strip()
+    raw_words = [w.strip(".,!?\"'") for w in raw_lower.split()]
+    
+    # Check if raw user query contains any agricultural domain keywords
+    has_raw_agri = any(k in raw_lower for k in AGRI_KEYWORDS)
+    has_raw_greeting = any(g in raw_lower for g in GREETING_META_PATTERNS) or any(w in GREETING_META_PATTERNS for w in raw_words)
+    
+    # If raw query has no agri keywords AND (is a greeting/meta pattern or short text <= 3 words)
+    if not has_raw_agri and (has_raw_greeting or len(raw_words) <= 3):
+        return "GREETING_OR_META"
+    
+    combined = (raw_lower + " " + eng_query.lower()).strip()
+    has_diagnostic = any(k in combined for k in DIAGNOSTIC_KEYWORDS)
+    
+    if has_diagnostic:
+        return "DIAGNOSTIC_QUERY"
+        
+    return "DIRECT_AGRONOMIC_QUERY"
+
 # --- Endpoints ---
 
 @app.post("/query")
 async def process_query(req: QueryRequest):
-    gemini_key, hf_token = get_api_keys(req.gemini_key, req.hf_token)
-    
-    if not gemini_key:
-        raise HTTPException(status_code=400, detail="Gemini API Key is missing. Ensure GEMINI_API_KEY is configured in backend environment.")
+    gemini_key, groq_key, hf_token = get_api_keys(req.gemini_key, req.groq_key, req.hf_token)
 
     pipeline_logs = []
     mode = req.pipeline_mode or "pivot"
+    provider_setting = req.provider or "auto"
     
-    pipeline_logs.append({"stage": "Pipeline Settings", "message": f"Running RAG pipeline in Mode: {mode.upper()}"})
+    pipeline_logs.append({"stage": "Pipeline Settings", "message": f"Running RAG pipeline in Mode: {mode.upper()} | Provider: {provider_setting.upper()}"})
     
     # Format history turns for context memory
     history_text = ""
     if req.history and len(req.history) > 0:
         pipeline_logs.append({"stage": "Context Memory", "message": f"Incorporating past {len(req.history)} conversation turn(s) for memory."})
         history_text = "\nRECENT CONVERSATION HISTORY:\n"
-        for item in req.history[-4:]:  # last 4 turns
+        for item in req.history[-4:]:
             role_label = "Farmer" if item.sender == "user" else "Extension Agent"
             history_text += f"{role_label}: {item.text}\n"
         history_text += "---\n"
@@ -344,112 +533,183 @@ async def process_query(req: QueryRequest):
     if mode == "direct":
         pipeline_logs.append({"stage": "Translation (Input) Bypassed", "message": f"Direct prompt generated in source dialect: {req.language}"})
         pipeline_logs.append({"stage": "Translation (Internal Matching)", "message": "Running internal query translation for ChromaDB key terms..."})
-        english_query = translate_text(req.query, req.language, "English", hf_token)
+        english_query = translate_text(req.query, req.language, "English", hf_token, gemini_key)
         pipeline_logs.append({"stage": "Translation (Internal Matching) Done", "message": f"Internal query key: '{english_query}'"})
     else:
         pipeline_logs.append({"stage": "Translation (Input)", "message": f"Translating query from {req.language} to English..."})
-        english_query = translate_text(req.query, req.language, "English", hf_token)
+        english_query = translate_text(req.query, req.language, "English", hf_token, gemini_key)
         pipeline_logs.append({"stage": "Translation (Input) Done", "message": f"English query: '{english_query}'"})
 
-    # 2. Vector DB Query (ChromaDB)
-    pipeline_logs.append({"stage": "Vector DB Search", "message": "Searching ChromaDB vector store for context..."})
-    try:
-        results = collection.query(
-            query_texts=[english_query],
-            n_results=3
-        )
-        
-        retrieved_docs = []
-        context_text = ""
-        
-        if results and results["documents"] and len(results["documents"][0]) > 0:
-            for i in range(len(results["documents"][0])):
-                doc_text = results["documents"][0][i]
-                metadata = results["metadatas"][0][i]
-                distance = results["distances"][0][i] if "distances" in results and results["distances"] else 0.5
-                score = round((1 - distance) * 100, 2)
-                
-                retrieved_docs.append({
-                    "title": metadata.get("title", "Advisory Manual"),
-                    "crop": metadata.get("crop", "General"),
-                    "category": metadata.get("category", "General"),
-                    "content": doc_text,
-                    "score": score
-                })
-                context_text += f"\nSOURCE: {metadata.get('title')}\nCROP: {metadata.get('crop')}\nADVISORY: {doc_text}\n---\n"
-            
-            pipeline_logs.append({"stage": "Vector DB Done", "message": f"Retrieved {len(retrieved_docs)} matching agricultural guides."})
-        else:
-            pipeline_logs.append({"stage": "Vector DB Done", "message": "No relevant context found. Defaulting to general LLM knowledge."})
-            context_text = "No matching expert manual found. Provide general expert agricultural guidance."
-            
-    except Exception as e:
-        pipeline_logs.append({"stage": "Vector DB Error", "message": f"ChromaDB error: {str(e)}. Proceeding without context."})
-        retrieved_docs = []
-        context_text = "No context available due to system error."
+    # Classify Query Intent
+    intent = classify_query_intent(req.query, english_query)
+    pipeline_logs.append({"stage": "Intent Classifier", "message": f"Query Intent identified: {intent}"})
 
-    # 3. Construct Prompt & Generate Response
+    retrieved_docs = []
+    context_text = ""
+
+    # 2. Vector DB Query (ChromaDB) - Only query context if not a simple greeting
+    if intent != "GREETING_OR_META":
+        pipeline_logs.append({"stage": "Vector DB Search", "message": "Searching ChromaDB vector store for context..."})
+        try:
+            results = collection.query(
+                query_texts=[english_query],
+                n_results=3
+            )
+            
+            if results and results["documents"] and len(results["documents"][0]) > 0:
+                for i in range(len(results["documents"][0])):
+                    doc_text = results["documents"][0][i]
+                    metadata = results["metadatas"][0][i]
+                    distance = results["distances"][0][i] if "distances" in results and results["distances"] else 0.5
+                    score = round((1 - distance) * 100, 2)
+                    
+                    retrieved_docs.append({
+                        "title": metadata.get("title", "Advisory Manual"),
+                        "crop": metadata.get("crop", "General"),
+                        "category": metadata.get("category", "General"),
+                        "content": doc_text,
+                        "score": score
+                    })
+                    context_text += f"\nSOURCE: {metadata.get('title')}\nCROP: {metadata.get('crop')}\nADVISORY: {doc_text}\n---\n"
+                
+                pipeline_logs.append({"stage": "Vector DB Done", "message": f"Retrieved {len(retrieved_docs)} matching agricultural guides."})
+            else:
+                pipeline_logs.append({"stage": "Vector DB Done", "message": "No relevant context found. Defaulting to general LLM knowledge."})
+                context_text = "No matching expert manual found. Provide general expert agricultural guidance."
+                
+        except Exception as e:
+            pipeline_logs.append({"stage": "Vector DB Error", "message": f"ChromaDB error: {str(e)}. Proceeding without context."})
+            retrieved_docs = []
+            context_text = "No context available due to system error."
+    else:
+        pipeline_logs.append({"stage": "Vector DB Search Bypassed", "message": "Greeting/Meta query detected. Vector DB search bypassed to ensure direct conversational response."})
+
+    # 3. Construct Prompt & Generate Response based on Intent & Mode
     if mode == "direct":
-        prompt = f"""
-You are an expert Agricultural Extension Officer specializing in Nigerian farming systems across all geopolitical zones (South-West, South-East, South-South, North-Central, North-West, North-East).
-A smallholder farmer is speaking to you in {req.language}.
-You MUST respond directly, naturally, and natively in {req.language} (e.g. if Nigerian Pidgin, write exclusively in authentic Nigerian Pidgin; if Hausa, write in Hausa; if Igbo, write in Igbo; if Yoruba, write in Yoruba).
+        if intent == "GREETING_OR_META":
+            prompt = f"""
+You are AgriRAG, an expert Senior Agricultural Extension Agent serving smallholder farmers in Nigeria.
+A smallholder farmer is greeting or asking a general question in {req.language}: "{req.query}".
 
 {history_text}
 
-Provide COMPLETE, step-by-step, highly practical local advice. Include:
-1. Diagnosis & Root Cause
-2. Immediate Action Steps (Cultural methods e.g. uprooting infected plants, organic sprays e.g. neem oil extract/wood ash/soap mix)
-3. Disease-resistant Nigerian varieties (e.g. TME 419 cassava, FARO 44 rice, SAMMAZ maize, etc.)
-4. Prevention & Sourcing Advice (IITA, NCRI, local ADP extension officers)
+CRITICAL INSTRUCTIONS:
+- Respond directly, warmly, and concisely in authentic, natural {req.language}.
+- Introduce yourself as their Agricultural Extension Assistant.
+- Invite them to ask any questions about crop farming, soil management, pest & disease diagnosis, weather alerts, or agricultural best practices in Nigeria.
+- Keep your response brief (2-4 sentences max).
+- DO NOT include structured diagnostic headings (e.g. Diagnosis & Cause) or mention unrelated crop diseases.
+"""
+        elif intent == "DIRECT_AGRONOMIC_QUERY":
+            prompt = f"""
+You are an expert Agricultural Extension Officer specializing in Nigerian farming systems across all geopolitical zones.
+A smallholder farmer is asking you in {req.language}: "{req.query}".
+
+{history_text}
 
 Context Manuals:
 {context_text}
 
-Farmer's Query (in {req.language}):
-"{req.query}"
+CRITICAL INSTRUCTIONS:
+- Respond directly, naturally, and natively in authentic {req.language}.
+- Answer the farmer's exact question DIRECTLY in the first sentence.
+- Provide actionable, practical advice for smallholder farming in Nigeria.
+- Format cleanly with bullet points and bold highlights.
+- DO NOT use structured crop disease headers (like Diagnosis & Cause) unless specifically requested.
+"""
+        else: # DIAGNOSTIC_QUERY
+            prompt = f"""
+You are an expert Agricultural Extension Officer specializing in Nigerian plant health & crop disease diagnosis.
+A smallholder farmer is describing a plant problem in {req.language}: "{req.query}".
+
+{history_text}
+
+Context Manuals:
+{context_text}
 
 CRITICAL INSTRUCTIONS:
-- Speak natively in {req.language} with local warmth and respect.
-- Format with clear bullet points and bold text so it is easy to read.
-- Provide a full, complete answer without cutting off.
+- Respond directly, naturally, and natively in authentic {req.language}.
+- Provide a clear diagnosis, immediate action steps, resistant crop varieties, and local extension contact advisory tailored to the issue.
+- Format cleanly with bullet points and bold headers.
 """
-        pipeline_logs.append({"stage": "LLM Synthesis (Direct Dialect)", "message": f"Generating response natively in {req.language} using Gemini..."})
-        final_response = generate_gemini_response(prompt, gemini_key)
+
+        pipeline_logs.append({"stage": "LLM Synthesis (Direct Dialect)", "message": f"Generating response natively in {req.language} using LLM Engine..."})
+        final_response = generate_llm_response(prompt, gemini_key, groq_key, hf_token, provider_setting)
         pipeline_logs.append({"stage": "LLM Synthesis Done", "message": "Direct dialect response successfully synthesized."})
         
         english_response = "[Bypassed in Direct Dialect RAG Mode]"
         pipeline_logs.append({"stage": "Translation (Output) Bypassed", "message": "Direct Dialect output bypassed translation layer."})
 
-    else:
-        prompt = f"""
-You are an expert Senior Agricultural Extension Officer specializing in Nigerian farming systems (Rainforest, Derived Savannah, Sudan Savannah).
-Provide clear, complete, and practical step-by-step diagnostic and agronomic advice for smallholder farmers in Nigeria based on the expert context below.
+    else: # pivot mode
+        if intent == "GREETING_OR_META":
+            prompt = f"""
+You are AgriRAG, an expert Senior Agricultural Extension Agent serving smallholder farmers in Nigeria.
+The farmer is greeting or asking a general question: "{english_query}".
+
+{history_text}
+
+CRITICAL INSTRUCTIONS:
+- Respond warmly, directly, and concisely in a friendly extension agent voice.
+- Introduce yourself as the Agricultural Extension Assistant.
+- Invite the farmer to ask any questions regarding crop cultivation, soil health, fertilizer application, disease diagnosis, weather alerts, or best farming practices in Nigeria.
+- Keep the response brief (2-4 sentences max).
+- DO NOT include structured diagnostic headings (like Diagnosis & Cause) or mention unrelated crop diseases.
+"""
+        elif intent == "DIRECT_AGRONOMIC_QUERY":
+            prompt = f"""
+You are an expert Senior Agricultural Extension Officer specializing in Nigerian farming systems.
+Answer the farmer's specific question directly, accurately, and practically.
 
 {history_text}
 
 Context Manuals:
 {context_text}
 
-Farmer's Current Query:
+Farmer's Specific Question:
 "{english_query}"
 
-FORMAT YOUR RESPONSE WITH THE FOLLOWING STRUCTURED HEADINGS:
-- **🌿 Diagnosis & Cause**: Briefly explain the crop condition or pest/disease cause in clear terms.
-- **⚡ Immediate Action Steps**: Give 2-4 clear, bulleted steps (cultural practices e.g., rouging infected plants, organic treatments e.g., neem oil solution, wood ash, or safe chemical controls).
-- **🛡️ Resistant Varieties & Long-Term Prevention**: Recommend specific Nigerian crop varieties (e.g. TME 419 / TMS 30572 cassava, FARO 44 / 52 rice, SAMMAZ 15 maize, etc.) and preventive soil/sanitation practices.
-- **📍 Local Sourcing & Advisory**: Mention local Nigerian extension contacts or institutes (IITA, NCRI, NIHORT, CRIN, local State ADP extension agents).
+CRITICAL INSTRUCTIONS:
+- Answer the farmer's prompt DIRECTLY in the very first sentence.
+- Provide complete, practical, step-by-step guidance tailored to Nigerian smallholder agriculture.
+- Structure your response cleanly using bullet points, bold key terms, or short numbered steps where appropriate.
+- DO NOT use crop disease diagnostic headers (like "**🌿 Diagnosis & Cause**") unless the prompt asks for disease diagnosis.
+- Maintain a helpful, practical, expert extension tone.
+"""
+        else: # DIAGNOSTIC_QUERY
+            prompt = f"""
+You are an expert Senior Agricultural Extension Officer specializing in Nigerian plant health & crop disease diagnosis.
+Provide complete, practical step-by-step diagnostic and agronomic advice for smallholder farmers in Nigeria.
+
+{history_text}
+
+Context Manuals:
+{context_text}
+
+Farmer's Diagnostic Query:
+"{english_query}"
+
+FORMAT YOUR RESPONSE WITH CLEAR STRUCTURED HEADINGS:
+- **🌿 Diagnosis & Cause**: Explain the crop condition, pest, or pathogen cause in clear terms.
+- **⚡ Immediate Action Steps**: Give 2-4 clear, bulleted steps (cultural practices, organic/chemical controls).
+- **🛡️ Resistant Varieties & Long-Term Prevention**: Recommend specific Nigerian crop varieties (e.g. TME 419 cassava, FARO 44 rice, SAMMAZ 15 maize) and preventive practices.
+- **📍 Local Sourcing & Advisory**: Mention local Nigerian extension contacts or institutes (IITA, NCRI, NIHORT, CRIN, ADP officers).
 
 CRITICAL INSTRUCTIONS:
-- Be encouraging, highly practical, and complete. Do not leave sentences unfinished.
+- Respond DIRECTLY to the farmer's question.
+- DO NOT include meta-reasoning steps or headers like "Step 1: Understanding the Problem", "Step 2: Providing a Solution", "Step 3: Crafting the Response", or "The final answer is:".
+- Address the specific crop or symptoms mentioned in the query.
+- Keep explanations complete, actionable, and clear.
 - Do NOT mention "according to the context" or "documents". Answer directly as an experienced extension worker.
 """
-        pipeline_logs.append({"stage": "LLM Synthesis", "message": "Generating response in English using Gemini LLM..."})
-        english_response = generate_gemini_response(prompt, gemini_key)
+
+        pipeline_logs.append({"stage": "LLM Synthesis", "message": f"Generating response using Multi-Provider LLM Engine ({provider_setting})..."})
+        english_response = generate_llm_response(prompt, gemini_key, groq_key, hf_token, provider_setting)
+        english_response = clean_agent_response(english_response)
         pipeline_logs.append({"stage": "LLM Synthesis Done", "message": "English response successfully synthesized."})
 
         pipeline_logs.append({"stage": "Translation (Output)", "message": f"Translating final response back to {req.language}..."})
-        final_response = translate_text(english_response, "English", req.language, hf_token)
+        final_response = translate_text(english_response, "English", req.language, hf_token, gemini_key)
+        final_response = clean_agent_response(final_response)
         pipeline_logs.append({"stage": "Translation (Output) Done", "message": "Final response translated."})
 
     return {
@@ -581,29 +841,234 @@ async def add_document(doc: DocumentRequest):
         raise HTTPException(status_code=500, detail=f"Failed to add document: {str(e)}")
 
 
-@app.post("/transcribe")
-async def transcribe_audio(audio: UploadFile = File(...)):
-    """Transcribe uploaded audio using local Whisper model."""
+from fastapi.responses import Response
+
+def normalize_phonetic_speech(raw_text: str, target_lang: str = "Nigerian Pidgin", gemini_key: Optional[str] = None, groq_key: Optional[str] = None) -> str:
+    """Normalize raw phonetic STT output into clean, natural African dialect / English text."""
+    if not raw_text or len(raw_text.strip()) < 3:
+        return raw_text
+        
+    prompt = f"""
+You are an expert Speech-to-Text Phonetic Normalizer for Nigerian Farmers speaking in {target_lang} or English.
+Standard STT engines often mistranscribe West African speech phonetically:
+- "Waiting the" / "Waiting" -> "Wetin be" / "Wetin"
+- "how you deep" -> "how I fit store my yam" / "how you dey"
+- "parfa my am" -> "store my yam"
+- "soap" -> "soil" / "crop" / "soap"
+- "massacre" -> "mosaic"
+
+Convert this raw STT output: "{raw_text}" into the intended, natural, grammatically sensible agricultural query in {target_lang} or English.
+Return ONLY the corrected sentence string. Do NOT add commentary, intro text, or quote marks.
+"""
     try:
-        import whisper
-        import tempfile
-        import os
-        
-        # Load model lazily
-        model = whisper.load_model("tiny")
-        
-        # Save uploaded file to temp file
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as tmp:
-            tmp.write(await audio.read())
-            tmp_path = tmp.name
+        fixed = generate_llm_response(prompt, gemini_key=gemini_key, groq_key=groq_key)
+        return fixed.strip().strip('"')
+    except Exception:
+        return raw_text
+
+
+@app.post("/tts")
+async def generate_tts(
+    text: str = Form(...),
+    language: Optional[str] = Form("English"),
+    engine: Optional[str] = Form("auto")
+):
+    """Multi-Provider TTS Engine: Official Spitch SDK -> Microsoft Edge Neural African Voices -> Google gTTS."""
+    
+    # 0. Official Spitch SDK (voice="lina")
+    spitch_key = os.getenv("SPITCH_API_KEY")
+    if spitch_key and engine in ["auto", "spitch"]:
+        spitch_key_clean = spitch_key.strip('"').strip("'")
+        try:
+            from spitch import Spitch
+            spitch_client = Spitch(api_key=spitch_key_clean)
+            # Spitch expects valid ISO 639 language codes: 'en', 'yo', 'ha', 'ig'
+            spitch_lang_map = {"Nigerian Pidgin": "en", "Yoruba": "yo", "Hausa": "ha", "Igbo": "ig", "English": "en"}
             
-        result = model.transcribe(tmp_path)
-        os.remove(tmp_path)
-        
-        return {"text": result["text"]}
-    except Exception as e:
-        print(f"Transcription failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
+            res = spitch_client.speech.generate(
+                text=text[:500],
+                language=spitch_lang_map.get(language, "en"),
+                voice="lina"
+            )
+            audio_bytes = res.read() if hasattr(res, "read") else res.content
+            if audio_bytes and len(audio_bytes) > 100:
+                return Response(content=audio_bytes, media_type="audio/mpeg")
+        except Exception as err:
+            print(f"[Spitch SDK TTS] {err}. Auto-routing to Microsoft Edge / gTTS fallback...")
+
+    # 1. Microsoft Edge Neural African Voices (en-NG-EzinneNeural / yo-NG-OlaNeural / ha-NG-AminuNeural)
+    if engine in ["auto", "edge"]:
+        try:
+            import edge_tts
+            
+            voice_map = {
+                "Nigerian Pidgin": "en-NG-EzinneNeural",
+                "English": "en-NG-EzinneNeural",
+                "Yoruba": "yo-NG-OlaNeural",
+                "Hausa": "ha-NG-AminuNeural",
+                "Igbo": "en-NG-EzinneNeural"
+            }
+            target_voice = voice_map.get(language, "en-NG-EzinneNeural")
+            
+            communicate = edge_tts.Communicate(text[:600], target_voice)
+            audio_data = b""
+            async for chunk in communicate.stream():
+                if chunk["type"] == "audio":
+                    audio_data += chunk["data"]
+
+            if audio_data and len(audio_data) > 100:
+                return Response(content=audio_data, media_type="audio/mpeg")
+        except Exception as edge_err:
+            print("Edge Neural TTS error:", edge_err)
+
+    # 2. Google Text-to-Speech (gTTS)
+    if engine in ["auto", "gtts"]:
+        try:
+            from gtts import gTTS
+            import io
+            tts_lang = "en"
+            if language == "Yoruba":
+                tts_lang = "yo"
+            elif language == "Hausa":
+                tts_lang = "ha"
+            elif language == "Igbo":
+                tts_lang = "ig"
+                
+            tts = gTTS(text=text[:600], lang=tts_lang, slow=False)
+            fp = io.BytesIO()
+            tts.write_to_fp(fp)
+            return Response(content=fp.getvalue(), media_type="audio/mpeg")
+        except Exception as gtts_err:
+            print("gTTS error:", gtts_err)
+
+    return {"status": "client_speech_synthesis", "text": text, "language": language}
+
+
+@app.post("/transcribe")
+async def transcribe_audio(
+    audio: UploadFile = File(...),
+    language: Optional[str] = Form(None),
+    gemini_key: Optional[str] = Form(None),
+    hf_token: Optional[str] = Form(None)
+):
+    """4-Layer Fallback STT Engine + LLM Phonetic Dialect Normalizer."""
+    gemini_key, groq_key, hf_token = get_api_keys(gemini_key, None, hf_token)
+    audio_bytes = await audio.read()
+    target_lang = language or "Nigerian Pidgin"
+    noise_list = ["thank you", "you.", "you", "subtitles by", "amara.org", "thanks for watching", "bye"]
+
+    raw_transcript = ""
+
+    # 1. Groq Cloud Speech API (whisper-large-v3-turbo — ultra fast 0.2s, 1.5B parameters)
+    effective_groq_key = groq_key or os.getenv("GROQ_API_KEY")
+    if effective_groq_key:
+        try:
+            url = "https://api.groq.com/openai/v1/audio/transcriptions"
+            headers = {"Authorization": f"Bearer {effective_groq_key}"}
+            
+            prompt_hint = f"Nigerian agricultural query in {target_lang}: How far, how I fit store my yam, cure cassava disease, fertilizer for maize."
+            
+            files = {"file": ("voice_input.webm", audio_bytes, audio.content_type or "audio/webm")}
+            data = {
+                "model": "whisper-large-v3-turbo",
+                "prompt": prompt_hint
+            }
+            if target_lang not in ["Hausa", "Igbo", "Yoruba"]:
+                data["language"] = "en"
+                
+            resp = requests.post(url, headers=headers, files=files, data=data, timeout=15)
+            if resp.status_code == 200:
+                text = resp.json().get("text", "").strip()
+                if text and text.lower().replace(".", "").strip() not in noise_list:
+                    raw_transcript = text
+        except Exception as err:
+            print(f"Layer 1 (Groq Speech) error: {err}. Falling back to Layer 2 (Gemini)...")
+
+    # 2. Gemini 2.5 Flash Audio Transcription
+    if not raw_transcript and gemini_key:
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={gemini_key}"
+            headers = {"Content-Type": "application/json"}
+            base64_audio = base64.b64encode(audio_bytes).decode("utf-8")
+            
+            prompt_text = f"The speaker is a Nigerian farmer speaking in {target_lang}. Transcribe the spoken audio text accurately word for word in {target_lang} (or English if spoken in English). Return ONLY the direct transcribed text string."
+            
+            payload = {
+                "contents": [
+                    {
+                        "parts": [
+                            {"text": prompt_text},
+                            {
+                                "inlineData": {
+                                    "mimeType": audio.content_type or "audio/webm",
+                                    "data": base64_audio
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+            
+            resp = requests.post(url, headers=headers, json=payload, timeout=20)
+            if resp.status_code == 200:
+                text = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip().strip('"')
+                if text and text.lower().replace(".", "").strip() not in noise_list:
+                    raw_transcript = text
+        except Exception as err:
+            print(f"Layer 2 (Gemini Speech) error: {err}. Falling back to Layer 3 (Hugging Face)...")
+
+    # 3. Hugging Face Serverless Speech API (openai/whisper-large-v3-turbo)
+    if not raw_transcript and effective_hf_token:
+        try:
+            hf_url = "https://router.huggingface.co/hf-inference/models/openai/whisper-large-v3-turbo"
+            headers = {
+                "Authorization": f"Bearer {effective_hf_token}",
+                "Content-Type": audio.content_type or "audio/webm"
+            }
+            resp = requests.post(hf_url, headers=headers, data=audio_bytes, timeout=20)
+            if resp.status_code == 200:
+                text = resp.json().get("text", "").strip()
+                if text and text.lower().replace(".", "").strip() not in noise_list:
+                    raw_transcript = text
+        except Exception as err:
+            print(f"Layer 3 (Hugging Face Speech) error: {err}. Falling back to Layer 4 (Local Whisper)...")
+
+    # 4. Local Whisper Model Fallback
+    if not raw_transcript:
+        try:
+            import whisper
+            import tempfile
+            import os
+            
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as tmp:
+                tmp.write(audio_bytes)
+                tmp_path = tmp.name
+                
+            model = whisper.load_model("tiny")
+            
+            whisper_lang = "en"
+            if target_lang in ["Hausa", "Igbo", "Yoruba"]:
+                whisper_lang = None
+                
+            initial_prompt = f"Agricultural extension query spoken in {target_lang} or English: How far, how I fit store my yam, cure cassava disease."
+            
+            if whisper_lang:
+                result = model.transcribe(tmp_path, fp16=False, language=whisper_lang, initial_prompt=initial_prompt)
+            else:
+                result = model.transcribe(tmp_path, fp16=False, initial_prompt=initial_prompt)
+                
+            os.remove(tmp_path)
+            raw_transcript = result.get("text", "").strip()
+        except Exception as e:
+            print(f"Layer 4 (Local Whisper) failed: {e}")
+            raise HTTPException(status_code=500, detail=f"All 4 Speech-to-Text providers failed: {str(e)}.")
+
+    if not raw_transcript:
+        return {"text": ""}
+
+    # Pass raw STT transcript through 0.1s LLM Phonetic Dialect Normalizer
+    final_text = normalize_phonetic_speech(raw_transcript, target_lang, gemini_key, effective_groq_key)
+    return {"text": final_text}
 
 
 @app.get("/sources")

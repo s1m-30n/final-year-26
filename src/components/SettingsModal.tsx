@@ -67,14 +67,34 @@ export default function SettingsModal({
             </p>
           </div>
 
-          {/* Security Banner */}
-          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-1.5">
+          {/* Multi-Provider LLM & STT Banner */}
+          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-2.5">
             <div className="flex items-center gap-2 font-semibold text-slate-800">
-              <Cpu className="w-4 h-4 text-indigo-600" /> Server-Side Key Management Active
+              <Cpu className="w-4 h-4 text-emerald-600" /> Multi-Provider AI Architecture
             </div>
-            <p className="text-[11px] text-slate-500 leading-normal">
-              Gemini LLM and HuggingFace NLLB translation keys are securely configured in your backend environment (<code className="bg-slate-200 px-1 py-0.5 rounded text-[10px]">.env</code>).
-            </p>
+            
+            <div>
+              <div className="font-semibold text-slate-700 text-[11px] mb-1">🤖 LLM Text & Dialect Synthesis:</div>
+              <p className="text-[11px] text-slate-500 leading-normal">
+                <span className="font-semibold text-slate-700">Gemini 2.5 Flash API</span> &rarr; 
+                <span className="font-semibold text-slate-700"> Groq Llama 3.3 70B API</span> &rarr; 
+                <span className="font-semibold text-slate-700"> Local Ollama</span>.
+              </p>
+            </div>
+
+            <div>
+              <div className="font-semibold text-slate-700 text-[11px] mb-1">🎙️ 4-Layer Speech-to-Text Engine:</div>
+              <p className="text-[11px] text-slate-500 leading-normal">
+                <span className="font-semibold text-slate-700">1. Groq Whisper-Large-v3-Turbo</span> &rarr; 
+                <span className="font-semibold text-slate-700">2. Gemini 2.5 Flash Speech</span> &rarr; 
+                <span className="font-semibold text-slate-700">3. Hugging Face Router STT</span> &rarr; 
+                <span className="font-semibold text-slate-700">4. Local Whisper Model</span>.
+              </p>
+            </div>
+
+            <div className="text-[10px] text-slate-400 font-mono bg-white p-2 rounded border border-slate-100">
+              Cloud Ready: Render Free Tier deployment runs lightweight Gemini, Groq & HF APIs (~100MB RAM footprint).
+            </div>
           </div>
 
           {/* Connection Test */}
