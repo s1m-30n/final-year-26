@@ -53,10 +53,29 @@ interface DocumentItem {
   };
 }
 
-const CROP_OPTIONS = ["Cassava", "Maize", "Yam", "Tomato", "General", "Cocoa", "Rice", "Oil Palm"];
+const CROP_OPTIONS = [
+  "Cassava",
+  "Maize",
+  "Yam",
+  "Tomato",
+  "Mango",
+  "Citrus",
+  "Plantain",
+  "Pawpaw",
+  "Pineapple",
+  "Sweet Potato",
+  "Pepper",
+  "Rice",
+  "Cocoa",
+  "Oil Palm",
+  "General"
+];
 const CATEGORY_OPTIONS = [
   "Root & Tuber Crops",
+  "Tree Fruits & Orchards",
+  "Fruit & Plantation Crops",
   "Cereals & Grains",
+  "Horticultural Crops",
   "Pest Control",
   "Soil & Land Management",
   "Post-Harvest Processing",

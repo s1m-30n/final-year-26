@@ -3,8 +3,14 @@ import chromadb
 from dotenv import load_dotenv
 from chromadb.utils import embedding_functions
 
+DB_PATH = os.path.join(os.path.dirname(__file__), "chroma_db")
+
 def get_chroma_client():
-    return chromadb.PersistentClient(path=DB_PATH)
+    import chromadb.config
+    return chromadb.PersistentClient(
+        path=DB_PATH,
+        settings=chromadb.config.Settings(anonymized_telemetry=False)
+    )
 
 import json
 
@@ -24,21 +30,20 @@ def seed_database():
     print("Connecting to ChromaDB database...")
     client = get_chroma_client()
     
-    # Instantiate custom offline embedding function
-    emb_fn = OfflineEmbeddingFunction()
+    emb_fn = embedding_functions.SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
     
-    # Create or get collection with local embedding function
-    collection = client.get_or_create_collection(
+    # Reset collection to match 384 embedding dimensions
+    try:
+        client.delete_collection(name="agricultural_extension")
+        print("Cleared existing collection to update embedding dimensionality.")
+    except Exception:
+        pass
+
+    collection = client.create_collection(
         name="agricultural_extension",
         metadata={"hnsw:space": "cosine"},
         embedding_function=emb_fn
     )
-    
-    # Check if database already has items
-    existing = collection.get()
-    if len(existing["ids"]) > 0:
-        print(f"Database already contains {len(existing['ids'])} documents. Clearing old documents...")
-        collection.delete(ids=existing["ids"])
         
     documents_list = load_sources()
     print(f"Seeding {len(documents_list)} expert-verified extension documents from sources.json...")

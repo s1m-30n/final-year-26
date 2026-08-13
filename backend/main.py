@@ -483,14 +483,14 @@ async def diagnose_leaf(
         base64_image = base64.b64encode(image_bytes).decode("utf-8")
         
         prompt = """
-Analyze this crop leaf image. Identify if there are any crop diseases or pest infestations, focusing on common Nigerian crops (Cassava, Maize, Yam, Tomato).
+Analyze this crop or fruit leaf image. Identify if there are any plant diseases or pest infestations, focusing on Nigerian produce, fruits, tubers, grains, and vegetables (Mango, Citrus, Plantain, Banana, Pawpaw, Pineapple, Guava, Avocado, Cashew, Cocoa, Oil Palm, Sweet Potato, Yam, Cassava, Maize, Rice, Sorghum, Tomato, Pepper, Okra, Egusi).
 Return the result strictly as a JSON object with the following fields:
 {
-  "disease": "Name of the crop disease (e.g. Cassava Mosaic Disease, Maize Rust, Healthy, etc.)",
-  "crop": "Name of the crop (e.g. Cassava, Maize, Yam, Tomato, Unknown)",
+  "disease": "Name of the disease/pest (e.g. Mango Anthracnose, Black Sigatoka, Citrus Canker, Papaya Ringspot, Cassava Mosaic, Fall Armyworm, Healthy, etc.)",
+  "crop": "Name of the crop or fruit (e.g. Mango, Citrus, Plantain, Pawpaw, Pineapple, Cassava, Maize, Yam, Sweet Potato, Tomato, Pepper, etc.)",
   "confidence": 92.5,
-  "symptoms": ["list of visible symptoms like chlorosis, leaf spots, whiteflies"],
-  "treatment": ["list of actionable treatment steps, including organic treatments like neem oil, and chemical controls if needed"]
+  "symptoms": ["list of visible symptoms like leaf spots, chlorosis, fruit lesions, whiteflies, stem damage"],
+  "treatment": ["list of actionable treatment steps, including organic treatments like neem oil spray, copper fungicide, and chemical controls if needed"]
 }
 Make sure you return only the raw JSON. No markdown code blocks, just raw JSON text.
 """
@@ -689,6 +689,48 @@ def find_nearest_state(lat: float, lon: float):
             nearest_state = state_name
     return nearest_state
 
+def generate_dynamic_agro_advisory(region: str, state: str, condition: str, temp_c: float, humidity: float, precip: float, wind: float) -> str:
+    """Dynamically generates targeted agricultural advisories for Nigerian produce, tree fruits, tubers, grains, and vegetables based on real-time weather metrics."""
+    region_lower = (region or "").lower()
+    state_lower = (state or "").lower()
+    
+    if humidity > 80:
+        if any(k in region_lower or k in state_lower for k in ["benue", "oyo", "ogbomoso"]):
+            return f"LIVE GPS ALERT ({condition}, {humidity}% Humidity): High fungal risk for Benue/Oyo Citrus (Citrus Canker/Melanose) & Ogbomoso Mango (Anthracnose). Apply neem oil or copper spray immediately."
+        elif any(k in region_lower or k in state_lower for k in ["edo", "ondo", "rivers", "cross river", "delta"]):
+            return f"LIVE GPS ALERT ({condition}, {humidity}% Humidity): Damp environment triggers Black Sigatoka in Plantain/Banana plantations and Black Pod disease in Cocoa. Prune infected lower leaves."
+        elif any(k in region_lower or k in state_lower for k in ["enugu", "ebonyi", "imo", "abia"]):
+            return f"LIVE GPS ALERT ({condition}, {humidity}% Humidity): High moisture warning for Smooth Cayenne Pineapple & Pawpaw (Papaya Ringspot Virus vector activity). Ensure soil aeration."
+        elif any(k in region_lower or k in state_lower for k in ["kano", "kaduna", "sokoto", "katsina"]):
+            return f"LIVE GPS ALERT ({condition}, {humidity}% Humidity): Extreme moisture in northern belt. High risk for Tomato Early Blight, Habanero Pepper bacterial spot, and Maize rust."
+        else:
+            return f"LIVE GPS ALERT ({condition}, {humidity}% Humidity): High moisture elevates fungal spore dissemination across Cassava Mosaic whiteflies, Tomato Blight, Plantain Sigatoka & Mango Anthracnose."
+
+    elif temp_c > 32:
+        if any(k in region_lower or k in state_lower for k in ["kano", "jigawa", "katsina", "sokoto"]):
+            return f"LIVE GPS ALERT ({temp_c}°C Dry Heat): Severe heat stress for Sorghum, Millet & Maize silking. Apply heavy straw mulching and schedule early morning drip irrigation."
+        elif any(k in region_lower or k in state_lower for k in ["benue", "nasarawa", "plateau", "kogi"]):
+            return f"LIVE GPS ALERT ({temp_c}°C High Solar Irradiance): Heat stress risk for Citrus orchards, Orange-Fleshed Sweet Potato (OFSP) slips & White Yam mounds. Irrigate seedling nurseries."
+        elif any(k in region_lower or k in state_lower for k in ["oyo", "osun", "ogun", "kwara"]):
+            return f"LIVE GPS ALERT ({temp_c}°C Dry Heat): High evaporation rate affecting Ogbomoso Mango fruit retention & Plantain suckers. Mulch tree basins with dry organic matter."
+        else:
+            return f"LIVE GPS ALERT ({temp_c}°C Heat Stress): Heat stress warning across grain fields, fruit tree saplings (Citrus/Mango) & vegetable beds. Ensure shade cover for nurseries."
+
+    elif precip > 2.0:
+        if any(k in region_lower or k in state_lower for k in ["edo", "delta", "rivers", "bayelsa"]):
+            return f"LIVE GPS ALERT (Active Rain {precip}mm): Torrential rain in Niger Delta belt. Clear farm drainage furrows to prevent root rot in Plantain mats, Yam heaps & Cassava tubers."
+        elif any(k in region_lower or k in state_lower for k in ["benue", "taraba", "kogi"]):
+            return f"LIVE GPS ALERT (Active Rain {precip}mm): Heavy rainfall in Benue river basin. Secure White Yam mounds against soil erosion and suspend NPK fertilizer top-dressing."
+        else:
+            return f"LIVE GPS ALERT (Active Rain {precip}mm): Heavy precipitation detected. Clear drainage channels to protect cassava roots, vegetable beds & pineapple fields from waterlogging."
+
+    elif wind > 18:
+        return f"LIVE GPS ALERT (High Wind {wind} km/h): Strong gusts detected. Support leaning Plantain/Banana pseudostems with wooden props to prevent lodging; inspect Mango & Cashew branches."
+
+    else:
+        return f"LIVE GPS ADVISORY ({condition}, {temp_c}°C): Favorable conditions for routine weeding, fruit tree pruning (Mango/Citrus), foliar inspection, and targeted bio-fertilizer application."
+
+
 def fetch_live_openmeteo_weather(city: Optional[str] = None, lat: Optional[float] = None, lon: Optional[float] = None):
     # Determine exact target lat/lon and location name
     if lat is not None and lon is not None:
@@ -746,14 +788,9 @@ def fetch_live_openmeteo_weather(city: Optional[str] = None, lat: Optional[float
                         "advice": advice
                     })
             
-            if humidity > 80:
-                agro_advisory = f"LIVE REAL-TIME GPS ALERT ({condition}, {humidity}% Humidity): High moisture risk for Cassava Mosaic whiteflies & Tomato Early Blight. Apply neem oil spray."
-            elif temp_c > 33:
-                agro_advisory = f"LIVE REAL-TIME GPS ALERT ({temp_c}°C Dry Heat): Heat stress warning for Maize & Sorghum. Ensure soil mulching and drip irrigation."
-            elif precip > 2.0:
-                agro_advisory = f"LIVE REAL-TIME GPS ALERT (Active Rain {precip}mm): Torrential rain detected. Clear drainage channels to prevent cassava root rot."
-            else:
-                agro_advisory = f"LIVE REAL-TIME GPS ADVISORY ({condition}, {temp_c}°C): Favorable conditions for routine weeding, foliar inspection, and fertilizer application."
+            agro_advisory = generate_dynamic_agro_advisory(
+                info["region"], info["state"], condition, temp_c, humidity, precip, wind
+            )
                 
             return {
                 "region": info["region"],
@@ -849,12 +886,12 @@ async def get_emergency_push_alerts():
             "type": "weather",
             "priority": "urgent",
             "title": f"Live High Humidity Warning ({ibadan_live['humidity']}%)",
-            "title_pidgin": f"Water Heavy For Air ({ibadan_live['humidity']}%)! Protect Crop",
+            "title_pidgin": f"Water Heavy For Air ({ibadan_live['humidity']}%)! Protect Crop & Fruits",
             "category": "Live Weather Alert",
             "region": ibadan_live["region"],
             "timestamp": "Live API Telemetry",
-            "message_en": f"Real-time relative humidity in {ibadan_live['region']} is currently {ibadan_live['humidity']}%. High risk of Cassava Mosaic whiteflies & tomato fungal rot.",
-            "message_pidgin": f"Water heavy for air for {ibadan_live['region']} ({ibadan_live['humidity']}%). Whitefly worm and fungus fit spoil cassava and tomato. Spray neem oil mix quick!",
+            "message_en": f"Real-time relative humidity in {ibadan_live['region']} is currently {ibadan_live['humidity']}%. High risk of Cassava Mosaic whiteflies, Tomato fungal rot, Citrus melanose & Mango Anthracnose.",
+            "message_pidgin": f"Water heavy for air for {ibadan_live['region']} ({ibadan_live['humidity']}%). Whitefly, rot and fungus fit spoil cassava, tomato, orange and mango. Spray neem oil mix quick!",
             "action": "Spray Neem Solution"
         })
         
@@ -869,24 +906,24 @@ async def get_emergency_push_alerts():
             "category": "Live Temperature Alert",
             "region": kano_live["region"],
             "timestamp": "Live API Telemetry",
-            "message_en": f"Live temperature in {kano_live['region']} reached {kano_live['temp_c']}°C. Mulch maize & sorghum crop beds to prevent moisture loss.",
-            "message_pidgin": f"Sun hot well well for {kano_live['region']} ({kano_live['temp_c']}°C). Cover ground with dry grass make soil water no dry finish.",
-            "action": "Mulch Crop Beds"
+            "message_en": f"Live temperature in {kano_live['region']} reached {kano_live['temp_c']}°C. Mulch maize, sorghum, and fruit tree sapling (Citrus/Mango) beds to prevent moisture loss.",
+            "message_pidgin": f"Sun hot well well for {kano_live['region']} ({kano_live['temp_c']}°C). Cover ground with dry grass around maize and fruit tree so water no dry finish.",
+            "action": "Mulch Crop & Tree Beds"
         })
 
-    # 3. Always include pest & market price updates
+    # 3. Dynamic Fruit & Tree Crop Pest Alert
     generated_alerts.append({
         "id": "alert_live_03",
         "type": "pest",
         "priority": "urgent",
-        "title": "Fall Armyworm Outbreak Alert",
-        "title_pidgin": "Armyworm Warning for Maize Farms!",
-        "category": "Pest Outbreak",
-        "region": "North-Central & Sudan Belt",
-        "timestamp": "Live Field Report",
-        "message_en": "High whitefly & armyworm activity reported in maize fields. Inspect leaves for whorl damage and apply neem oil solution immediately.",
-        "message_pidgin": "Armyworm worm dey chop maize leaf for many farms! Look your maize leaf quick quick, spray neem oil mix make you kill am.",
-        "action": "Inspect Maize Whorls"
+        "title": "Mango Fruit Fly & Plantain Sigatoka Field Warning",
+        "title_pidgin": "Fruit Fly & Plantain Sigatoka Warning!",
+        "category": "Fruit & Tree Crop Alert",
+        "region": "South-West & Middle Belt Orchards",
+        "timestamp": "Live Extension Survey",
+        "message_en": "High Bactrocera fruit fly activity reported in Mango/Citrus orchards and Black Sigatoka in Plantain plantations. Hang protein bait traps and prune infected lower leaves.",
+        "message_pidgin": "Fruit fly dey spoil mango and orange, and black spots dey chop plantain leaf! Put trap for orchard and cut bad plantain leaf down.",
+        "action": "Set Bait Traps & Prune"
     })
 
     # Merge extension-agent submitted dynamic alerts

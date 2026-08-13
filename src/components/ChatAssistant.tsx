@@ -119,6 +119,9 @@ export default function ChatAssistant({
 
   const sampleLeaves = [
     { name: "Cassava (CMD)", icon: Leaf, disease: "Cassava Mosaic Disease", crop: "Cassava" },
+    { name: "Mango (Anthracnose)", icon: Sparkles, disease: "Mango Anthracnose", crop: "Mango" },
+    { name: "Plantain (Sigatoka)", icon: Leaf, disease: "Black Sigatoka", crop: "Plantain" },
+    { name: "Citrus (Canker)", icon: Sparkles, disease: "Citrus Canker", crop: "Citrus" },
     { name: "Maize (FAW)", icon: Sprout, disease: "Fall Armyworm Damage", crop: "Maize" },
     { name: "Tomato (Blight)", icon: Sparkles, disease: "Tomato Early Blight", crop: "Tomato" },
   ];
