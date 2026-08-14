@@ -113,7 +113,9 @@ export default function ChatAssistant({
   const [expandedContextId, setExpandedContextId] = useState<string | null>(
     null,
   );
-  const [expandedTranslations, setExpandedTranslations] = useState<Record<string, boolean>>({});
+  const [expandedTranslations, setExpandedTranslations] = useState<
+    Record<string, boolean>
+  >({});
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
   const [is2GMode, setIs2GMode] = useState<boolean>(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
@@ -203,7 +205,8 @@ export default function ChatAssistant({
     // 2. Fallback to Chrome Web Speech Synthesis
     if ("speechSynthesis" in window) {
       window.speechSynthesis.cancel();
-      const textToSpeak = msg.englishTranslation || msg.originalText || msg.text;
+      const textToSpeak =
+        msg.englishTranslation || msg.originalText || msg.text;
       const utterance = new SpeechSynthesisUtterance(textToSpeak);
       utterance.rate = 0.92;
       utterance.pitch = 1.0;
@@ -485,8 +488,10 @@ export default function ChatAssistant({
     } else {
       cancelRecordingRef.current = false;
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+        });
+
         let options: MediaRecorderOptions = {};
         if (typeof MediaRecorder.isTypeSupported === "function") {
           if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
@@ -527,7 +532,9 @@ export default function ChatAssistant({
           );
 
           if (audioBlob.size < 500) {
-            showNotification("No speech audio detected. Please try speaking into the mic.");
+            showNotification(
+              "No speech audio detected. Please try speaking into the mic.",
+            );
             return;
           }
 
@@ -550,7 +557,15 @@ export default function ChatAssistant({
               let transcribed = (data.text || "").trim();
 
               // Filter out common Whisper hallucinated noise on silence
-              const noiseArtifacts = ["you", "thank you", "subtitles by", "amara.org", "thanks for watching", "bye", "you."];
+              const noiseArtifacts = [
+                "you",
+                "thank you",
+                "subtitles by",
+                "amara.org",
+                "thanks for watching",
+                "bye",
+                "you.",
+              ];
               const cleaned = transcribed.toLowerCase().replace(/[.,!]/g, "");
               if (noiseArtifacts.includes(cleaned)) {
                 transcribed = "";
@@ -561,14 +576,20 @@ export default function ChatAssistant({
                 showNotification(`Voice note transcribed: "${transcribed}"`);
                 handleSendMessage(transcribed);
               } else {
-                showNotification("Could not transcribe speech clearly. Please try speaking into the mic again.");
+                showNotification(
+                  "Could not transcribe speech clearly. Please try speaking into the mic again.",
+                );
               }
             } else {
               const errData = await res.json().catch(() => ({}));
-              showNotification(errData.detail || "Speech transcription unavailable.");
+              showNotification(
+                errData.detail || "Speech transcription unavailable.",
+              );
             }
           } catch {
-            showNotification("Audio transcription network error. Please check server backend.");
+            showNotification(
+              "Audio transcription network error. Please check server backend.",
+            );
           } finally {
             setLoading(false);
           }
@@ -576,10 +597,15 @@ export default function ChatAssistant({
 
         mediaRecorder.start();
         setRecording(true);
-        onNewLog("Speech Recording", "Recording field voice input... Click 'Done & Convert' or 'Cancel'.");
+        onNewLog(
+          "Speech Recording",
+          "Recording field voice input... Click 'Done & Convert' or 'Cancel'.",
+        );
       } catch (err: any) {
         console.error("Microphone error:", err);
-        showNotification("Microphone access denied or audio device not available.");
+        showNotification(
+          "Microphone access denied or audio device not available.",
+        );
       }
     }
   };
@@ -757,7 +783,7 @@ export default function ChatAssistant({
               {/* Language Selector */}
               <select
                 style={{
-                  height: "32px",
+                  // height: "32px",
                   paddingLeft: "10px",
                   paddingRight: "10px",
                   borderRadius: "6px",
@@ -869,7 +895,12 @@ export default function ChatAssistant({
 
                       {/* Agent Response Action Toolbar: Audio Playback & English Translation Toggle */}
                       {msg.sender === "agent" && (
-                        <Box mt={3} pt={2} borderTop="1px solid" borderColor="gray.100">
+                        <Box
+                          mt={3}
+                          pt={2}
+                          borderTop="1px solid"
+                          borderColor="gray.100"
+                        >
                           <Flex align="center" gap={2} wrap="wrap">
                             {/* 🔊 Audio Playback Button */}
                             <Button
@@ -889,7 +920,9 @@ export default function ChatAssistant({
                               ) : (
                                 <Volume2 size={12} style={{ marginRight: 4 }} />
                               )}
-                              {playingAudioId === msg.id ? "Stop Audio" : "🔊 Listen (Voice Advisory)"}
+                              {playingAudioId === msg.id
+                                ? "Stop Audio"
+                                : "🔊 Listen (Voice Advisory)"}
                             </Button>
 
                             {/* 🌐 English Translation Toggle Button */}
@@ -910,40 +943,51 @@ export default function ChatAssistant({
                                   ? "Hide English Translation"
                                   : "Show English Translation"}
                                 {expandedTranslations[msg.id] ? (
-                                  <ChevronUp size={12} style={{ marginLeft: 3 }} />
+                                  <ChevronUp
+                                    size={12}
+                                    style={{ marginLeft: 3 }}
+                                  />
                                 ) : (
-                                  <ChevronDown size={12} style={{ marginLeft: 3 }} />
+                                  <ChevronDown
+                                    size={12}
+                                    style={{ marginLeft: 3 }}
+                                  />
                                 )}
                               </Button>
                             )}
                           </Flex>
 
                           {/* Expandable English Translation Card */}
-                          {expandedTranslations[msg.id] && (msg.originalText || msg.englishTranslation) && (
-                            <Box
-                              mt={2.5}
-                              p={3}
-                              bg="slate.50"
-                              borderRadius="xl"
-                              border="1px solid"
-                              borderColor="slate.200"
-                            >
-                              <Text
-                                fontSize="10px"
-                                fontWeight="bold"
-                                color="slate.500"
-                                textTransform="uppercase"
-                                mb={1}
-                                letterSpacing="wider"
+                          {expandedTranslations[msg.id] &&
+                            (msg.originalText || msg.englishTranslation) && (
+                              <Box
+                                mt={2.5}
+                                p={3}
+                                bg="slate.50"
+                                borderRadius="xl"
+                                border="1px solid"
+                                borderColor="slate.200"
                               >
-                                🇬🇧 English Translation:
-                              </Text>
-                              <FormattedMarkdown
-                                content={(msg.englishTranslation || msg.originalText) || ""}
-                                color="gray.800"
-                              />
-                            </Box>
-                          )}
+                                <Text
+                                  fontSize="10px"
+                                  fontWeight="bold"
+                                  color="slate.500"
+                                  textTransform="uppercase"
+                                  mb={1}
+                                  letterSpacing="wider"
+                                >
+                                  🇬🇧 English Translation:
+                                </Text>
+                                <FormattedMarkdown
+                                  content={
+                                    msg.englishTranslation ||
+                                    msg.originalText ||
+                                    ""
+                                  }
+                                  color="gray.800"
+                                />
+                              </Box>
+                            )}
                         </Box>
                       )}
 

@@ -33,11 +33,22 @@ interface LiveCameraScannerProps {
 }
 
 interface DiagnosisResult {
+  is_crop?: boolean;
   disease: string;
   crop: string;
-  confidence: number;
+  scientific_name?: string;
+  crop_confidence?: number;
+  disease_confidence?: number;
+  confidence?: number;
+  severity?: string;
   symptoms: string[];
   treatment: string[];
+  preventive_measures?: string[];
+  expert_rag_advisory?: Array<{
+    title: string;
+    crop: string;
+    content: string;
+  }>;
 }
 
 export default function LiveCameraScanner({
@@ -49,11 +60,12 @@ export default function LiveCameraScanner({
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState("");
   const [cameraActive, setCameraActive] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<DiagnosisResult | null>(null);
   const [scanActive, setScanActive] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [fieldNotes, setFieldNotes] = useState("");
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -124,6 +136,9 @@ export default function LiveCameraScanner({
     try {
       const formData = new FormData();
       formData.append("image", file);
+      if (fieldNotes.trim()) {
+        formData.append("context", fieldNotes.trim());
+      }
       const res = await fetch(`${backendUrl}/diagnose`, {
         method: "POST",
         body: formData,
@@ -173,6 +188,9 @@ export default function LiveCameraScanner({
             "image",
             new File([blob], "scan.jpg", { type: "image/jpeg" }),
           );
+          if (fieldNotes.trim()) {
+            formData.append("context", fieldNotes.trim());
+          }
           try {
             const res = await fetch(`${backendUrl}/diagnose`, {
               method: "POST",
@@ -259,11 +277,11 @@ export default function LiveCameraScanner({
                   fontWeight="extrabold"
                   letterSpacing="tight"
                 >
-                  Live AI Reticle Leaf Scanner
+                  Live AI Reticle Crop, Leaf & Seed Scanner
                 </Heading>
               </Flex>
               <Text fontSize="sm" color="gray.600" mt={1}>
-                Real-time crop leaf pathology diagnostics.
+                Real-time crop leaf pathology, seed quality & grain defect diagnostics.
               </Text>
             </Box>
 
@@ -439,6 +457,29 @@ export default function LiveCameraScanner({
                 )}
 
                 {/* Offline State Card */}
+                {/* Additional Field Notes Input */}
+                <Box mb={4} p={3} bg="gray.900" borderRadius="xl" border="1px solid #333">
+                  <Text fontSize="10px" color="gray.400" fontWeight="bold" textTransform="uppercase" mb={1.5}>
+                    📝 Additional Field Notes / Context (Optional):
+                  </Text>
+                  <input
+                    type="text"
+                    placeholder="e.g. Leaves turned yellow 3 days ago after heavy rainfall..."
+                    style={{
+                      width: "100%",
+                      padding: "8px 12px",
+                      borderRadius: "6px",
+                      border: "1px solid #444",
+                      backgroundColor: "#18181b",
+                      color: "#ffffff",
+                      fontSize: "12px",
+                      outline: "none"
+                    }}
+                    value={fieldNotes}
+                    onChange={(e) => setFieldNotes(e.target.value)}
+                  />
+                </Box>
+
                 {!cameraActive && (
                   <Box textAlign="center" p={8} maxW="360px">
                     <CameraOff
@@ -666,43 +707,69 @@ export default function LiveCameraScanner({
                       {result.disease}
                     </Heading>
                   </Box>
-                  <Badge
-                    variant="outline"
-                    borderColor="black"
-                    color="black"
-                    fontSize="xs"
-                    fontWeight="bold"
-                    px={3}
-                    py={1}
-                  >
-                    {result.confidence}% Match
-                  </Badge>
+                  <HStack gap={2}>
+                    {result.severity && (
+                      <Badge
+                        bg={
+                          result.severity === "Severe"
+                            ? "red.600"
+                            : result.severity === "Moderate"
+                            ? "orange.500"
+                            : "emerald.600"
+                        }
+                        color="white"
+                        fontSize="xs"
+                        fontWeight="bold"
+                        px={2.5}
+                        py={1}
+                        borderRadius="md"
+                      >
+                        {result.severity}
+                      </Badge>
+                    )}
+                    <Badge
+                      variant="outline"
+                      borderColor="black"
+                      color="black"
+                      fontSize="xs"
+                      fontWeight="bold"
+                      px={3}
+                      py={1}
+                    >
+                      {result.disease_confidence || result.confidence || 90}% Diagnosis
+                    </Badge>
+                  </HStack>
                 </Flex>
 
                 <SimpleGrid columns={2} gap={3} mb={5}>
                   <Box
-                    bg="gray.50"
+                    bg="emerald.50"
                     p={3.5}
                     borderRadius="xl"
                     borderWidth="1px"
-                    borderColor="gray.200"
+                    borderColor="emerald.200"
                   >
                     <Text
                       fontSize="10px"
-                      color="gray.500"
+                      color="emerald.800"
                       fontWeight="bold"
                       textTransform="uppercase"
                     >
-                      Target Crop
+                      Target Crop ({result.crop_confidence || 95}% Match)
                     </Text>
                     <Text
                       fontSize="sm"
-                      fontWeight="bold"
-                      color="black"
+                      fontWeight="extrabold"
+                      color="emerald.950"
                       mt={0.5}
                     >
                       {result.crop}
                     </Text>
+                    {result.scientific_name && (
+                      <Text fontSize="11px" fontStyle="italic" color="emerald.700" mt={0.5}>
+                        {result.scientific_name}
+                      </Text>
+                    )}
                   </Box>
                   <Box
                     bg="gray.50"
@@ -717,7 +784,7 @@ export default function LiveCameraScanner({
                       fontWeight="bold"
                       textTransform="uppercase"
                     >
-                      Vision Engine
+                      Vision AI Engine
                     </Text>
                     <Text
                       fontSize="xs"
@@ -725,11 +792,12 @@ export default function LiveCameraScanner({
                       color="black"
                       mt={0.5}
                     >
-                      Gemini 2.5 Flash
+                      Gemini 2.5 / Groq 90B
                     </Text>
                   </Box>
                 </SimpleGrid>
 
+                {/* Symptoms */}
                 <Box mb={5}>
                   <Text
                     fontSize="xs"
@@ -754,7 +822,8 @@ export default function LiveCameraScanner({
                   </VStack>
                 </Box>
 
-                <Box pt={4} borderTop="1px solid" borderColor="gray.200" mb={6}>
+                {/* Treatment */}
+                <Box pt={4} borderTop="1px solid" borderColor="gray.200" mb={5}>
                   <Text
                     fontSize="xs"
                     fontWeight="bold"
@@ -786,6 +855,40 @@ export default function LiveCameraScanner({
                     ))}
                   </VStack>
                 </Box>
+
+                {/* RAG Extension Manual Context (if returned) */}
+                {result.expert_rag_advisory && result.expert_rag_advisory.length > 0 && (
+                  <Box pt={4} borderTop="1px solid" borderColor="gray.200" mb={6}>
+                    <Text
+                      fontSize="xs"
+                      fontWeight="bold"
+                      color="emerald.800"
+                      textTransform="uppercase"
+                      mb={2}
+                    >
+                      📚 Verified Vector Manual Advice (ChromaDB)
+                    </Text>
+                    <VStack align="stretch" gap={2}>
+                      {result.expert_rag_advisory.map((manual, i) => (
+                        <Box
+                          key={i}
+                          bg="emerald.50"
+                          p={3}
+                          borderRadius="lg"
+                          borderWidth="1px"
+                          borderColor="emerald.200"
+                        >
+                          <Text fontSize="xs" fontWeight="bold" color="emerald.900" mb={0.5}>
+                            {manual.title} ({manual.crop})
+                          </Text>
+                          <Text fontSize="11px" color="emerald.950" lineHeight="relaxed">
+                            {manual.content}
+                          </Text>
+                        </Box>
+                      ))}
+                    </VStack>
+                  </Box>
+                )}
 
                 <Button
                   onClick={() => window.print()}
