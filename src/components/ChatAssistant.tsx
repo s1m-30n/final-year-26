@@ -127,6 +127,42 @@ export default function ChatAssistant({
   const recordingTimerRef = useRef<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Automatic Network Latency Probe & Bandwidth Detector
+  const probeNetworkSpeed = async () => {
+    try {
+      const navConn = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
+      if (navConn) {
+        const effType = navConn.effectiveType;
+        if (effType === "2g" || effType === "slow-2g") {
+          setIs2GMode(true);
+          showNotification("🐢 Slow 2G/3G Network Detected. Switching to Ultra-Lightweight Adaptive Mode.");
+          onNewLog("Network Telemetry", "Detected slow 2G connection via Network API. Adaptive 2G mode enabled.");
+          return;
+        }
+      }
+
+      // Run lightweight ping probe (1KB payload)
+      const startTime = performance.now();
+      await fetch(`${backendUrl}/ping`, { method: "GET", cache: "no-store" });
+      const endTime = performance.now();
+      const rtt = endTime - startTime;
+
+      if (rtt > 1200) {
+        setIs2GMode(true);
+        showNotification(`🐢 High Network Latency (${Math.round(rtt)}ms). Enabled 2G/3G Adaptive Mode.`);
+        onNewLog("Network Telemetry", `High network latency RTT: ${Math.round(rtt)}ms. Switched to 2G/3G Mode.`);
+      } else {
+        onNewLog("Network Telemetry", `High-Speed Network Detected (RTT: ${Math.round(rtt)}ms). Full Multimodal Power Active.`);
+      }
+    } catch {
+      // Ignore network probe failures
+    }
+  };
+
+  useEffect(() => {
+    probeNetworkSpeed();
+  }, []);
+
   useEffect(() => {
     if (recording) {
       setRecordingSeconds(0);
@@ -160,6 +196,21 @@ export default function ChatAssistant({
     }
 
     setPlayingAudioId(msg.id);
+
+    // If 2G/3G Mode is active, route directly to local Chrome Speech Synthesis to save network bandwidth
+    if (is2GMode) {
+      if ("speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+        const textToSpeak = msg.englishTranslation || msg.originalText || msg.text;
+        const utterance = new SpeechSynthesisUtterance(textToSpeak);
+        utterance.rate = 0.92;
+        utterance.pitch = 1.0;
+        utterance.onend = () => setPlayingAudioId(null);
+        utterance.onerror = () => setPlayingAudioId(null);
+        window.speechSynthesis.speak(utterance);
+        return;
+      }
+    }
 
     // 1. Try Backend Voice Engine (Official Spitch SDK / Microsoft Edge Neural HD Voice)
     try {

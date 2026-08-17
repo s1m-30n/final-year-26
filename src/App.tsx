@@ -1,5 +1,18 @@
 import { useState, useEffect } from "react";
-import { MessageSquare, Database, Cpu, Settings, Leaf, Camera, Globe, CloudSun, Bell, X, AlertTriangle, Menu } from "lucide-react";
+import {
+  MessageSquare,
+  Database,
+  Cpu,
+  Settings,
+  Leaf,
+  Camera,
+  Globe,
+  CloudSun,
+  Bell,
+  X,
+  AlertTriangle,
+  Menu,
+} from "lucide-react";
 import ChatAssistant from "./components/ChatAssistant";
 import VectorDBExplorer from "./components/VectorDBExplorer";
 import PipelineVisualizer from "./components/PipelineVisualizer";
@@ -8,21 +21,28 @@ import InternationalOrgsExplorer from "./components/InternationalOrgsExplorer";
 import AgroWeatherAlerts from "./components/AgroWeatherAlerts";
 import SettingsModal from "./components/SettingsModal";
 import "./App.css";
+import { Box } from "@chakra-ui/react";
 
 function App() {
-  const [activeTab, setActiveTab] = useState<"chat" | "database" | "pipeline" | "scanner" | "partners" | "weather">("chat");
+  const [activeTab, setActiveTab] = useState<
+    "chat" | "database" | "pipeline" | "scanner" | "partners" | "weather"
+  >("chat");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAlertsDrawerOpen, setIsAlertsDrawerOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [pipelineMode, setPipelineMode] = useState<"pivot" | "direct">("pivot");
 
   const [backendUrl, setBackendUrl] = useState(() => {
-    return localStorage.getItem("rag_backend_url") || "http://127.0.0.1:8000";
+    return localStorage.getItem("rag_backend_url") || import.meta.env.VITE_RAG_BACKEND_URL || "http://127.0.0.1:8000";
   });
 
-  useEffect(() => { localStorage.setItem("rag_backend_url", backendUrl); }, [backendUrl]);
+  useEffect(() => {
+    localStorage.setItem("rag_backend_url", backendUrl);
+  }, [backendUrl]);
 
-  const [pipelineLogs, setPipelineLogs] = useState<{ stage: string; message: string }[]>([]);
+  const [pipelineLogs, setPipelineLogs] = useState<
+    { stage: string; message: string }[]
+  >([]);
   const [pipelineData, setPipelineData] = useState({
     originalQuery: "",
     translatedQuery: "",
@@ -38,7 +58,8 @@ function App() {
 
   const handleClearLogs = () => setPipelineLogs([]);
 
-  const handleSetPipelineData = (data: typeof pipelineData) => setPipelineData(data);
+  const handleSetPipelineData = (data: typeof pipelineData) =>
+    setPipelineData(data);
 
   const tabs = [
     { id: "chat" as const, label: "Chat", icon: MessageSquare },
@@ -133,12 +154,15 @@ function App() {
               {pageTitles[activeTab]}
             </h2>
           </div>
-          
+
           <div className="flex items-center gap-2 md:gap-3 relative">
-            <div className="hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-[11px] font-medium text-emerald-800">
+            <Box
+              padding="6px 16px"
+              className="hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-[11px] font-medium text-emerald-800"
+            >
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               <span>System Online</span>
-            </div>
+            </Box>
 
             {/* Notifications Bell Dropdown */}
             <div className="relative">
@@ -158,7 +182,8 @@ function App() {
                 <div className="absolute right-0 mt-2 w-72 sm:w-80 bg-white border border-slate-200 rounded-2xl shadow-2xl z-50 p-4 space-y-3 animate-fade-in">
                   <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
                     <h4 className="font-bold text-xs text-slate-900 flex items-center gap-1.5">
-                      <AlertTriangle className="w-3.5 h-3.5 text-amber-500" /> Active Emergency Alerts
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />{" "}
+                      Active Emergency Alerts
                     </h4>
                     <button
                       onClick={() => setIsAlertsDrawerOpen(false)}
@@ -170,16 +195,29 @@ function App() {
 
                   <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                     <div className="p-2.5 rounded-xl bg-rose-50/70 border border-rose-200 text-xs space-y-1">
-                      <span className="text-[9px] font-bold text-rose-700 uppercase">Heavy Rain Warning</span>
-                      <p className="text-[11px] text-slate-700 font-medium">Torrential rain expected over next 48 hrs in South-West belt.</p>
+                      <span className="text-[9px] font-bold text-rose-700 uppercase">
+                        Heavy Rain Warning
+                      </span>
+                      <p className="text-[11px] text-slate-700 font-medium">
+                        Torrential rain expected over next 48 hrs in South-West
+                        belt.
+                      </p>
                     </div>
                     <div className="p-2.5 rounded-xl bg-amber-50/70 border border-amber-200 text-xs space-y-1">
-                      <span className="text-[9px] font-bold text-amber-700 uppercase">Fall Armyworm Alert</span>
-                      <p className="text-[11px] text-slate-700 font-medium">Inspect maize leaves for armyworm whorl damage.</p>
+                      <span className="text-[9px] font-bold text-amber-700 uppercase">
+                        Fall Armyworm Alert
+                      </span>
+                      <p className="text-[11px] text-slate-700 font-medium">
+                        Inspect maize leaves for armyworm whorl damage.
+                      </p>
                     </div>
                     <div className="p-2.5 rounded-xl bg-sky-50/70 border border-sky-200 text-xs space-y-1">
-                      <span className="text-[9px] font-bold text-sky-700 uppercase">Market Price Up</span>
-                      <p className="text-[11px] text-slate-700 font-medium">Cassava farmgate prices increased by 14% at Bodija.</p>
+                      <span className="text-[9px] font-bold text-sky-700 uppercase">
+                        Market Price Up
+                      </span>
+                      <p className="text-[11px] text-slate-700 font-medium">
+                        Cassava farmgate prices increased by 14% at Bodija.
+                      </p>
                     </div>
                   </div>
 
@@ -266,4 +304,3 @@ function App() {
 }
 
 export default App;
-

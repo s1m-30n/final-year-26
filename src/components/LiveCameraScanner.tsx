@@ -124,6 +124,49 @@ export default function LiveCameraScanner({
     onNewLog("Webcam", "Camera stream stopped.");
   };
 
+  const compressImageFile = (file: File, maxDimension = 500, quality = 0.75): Promise<File> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.src = URL.createObjectURL(file);
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+        if (width > maxDimension || height > maxDimension) {
+          if (width > height) {
+            height = Math.round((height * maxDimension) / width);
+            width = maxDimension;
+          } else {
+            width = Math.round((width * maxDimension) / height);
+            height = maxDimension;
+          }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          canvas.toBlob(
+            (blob) => {
+              URL.revokeObjectURL(img.src);
+              if (blob) {
+                resolve(new File([blob], file.name, { type: "image/jpeg" }));
+              } else {
+                resolve(file);
+              }
+            },
+            "image/jpeg",
+            quality
+          );
+        } else {
+          URL.revokeObjectURL(img.src);
+          resolve(file);
+        }
+      };
+      img.onerror = () => resolve(file);
+    });
+  };
+
   const handleFallbackCapture = async (
     e: React.ChangeEvent<HTMLInputElement>,
   ) => {
@@ -134,8 +177,13 @@ export default function LiveCameraScanner({
     onClearLogs();
     onNewLog("Capture", "Processing photo for multimodal AI diagnosis...");
     try {
+      const uploadFile = await compressImageFile(file, 500, 0.75);
+      onNewLog(
+        "Bandwidth Optimization",
+        `Compressed image from ${(file.size / 1024).toFixed(1)} KB to ${(uploadFile.size / 1024).toFixed(1)} KB for fast upload.`
+      );
       const formData = new FormData();
-      formData.append("image", file);
+      formData.append("image", uploadFile);
       if (fieldNotes.trim()) {
         formData.append("context", fieldNotes.trim());
       }

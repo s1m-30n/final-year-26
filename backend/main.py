@@ -858,9 +858,11 @@ Return STRICTLY a raw JSON object with no markdown formatting around it:
 
     except HTTPException:
         raise
-    except Exception as e:
-        print(f"Diagnosis endpoint failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Image diagnosis failed: {str(e)}")
+@app.get("/ping")
+async def ping_server():
+    """Ultra-lightweight ping endpoint for network latency & RTT bandwidth probing."""
+    import time
+    return {"status": "ok", "timestamp": time.time()}
 
 
 @app.get("/documents")
@@ -1467,7 +1469,7 @@ if __name__ == "__main__":
     import uvicorn
     # Load port from env or default to 8000
     port = int(os.getenv("PORT", 8000))
-    host = os.getenv("HOST", "127.0.0.1")
-    uvicorn.run("main:app", host=host, port=port, reload=True)
+    host = os.getenv("HOST", "0.0.0.0")
+    uvicorn.run("main:app", host=host, port=port)
 
 
