@@ -16,8 +16,13 @@ parent_env = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".en
 if os.path.exists(parent_env):
     load_dotenv(parent_env)
 
-# Disable ChromaDB telemetry to prevent ClientStartEvent capture() error
+# Prevent ONNXRuntime AVX2/AVX512 instruction crash (Exit status 132 SIGILL) on cloud containers like Render
+os.environ["ORT_DISABLE_CPU_AVX2"] = "1"
+os.environ["ORT_DISABLE_CPU_AVX512"] = "1"
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["ANONYMIZED_TELEMETRY"] = "False"
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 
 app = FastAPI(title="Agricultural Extension RAG API", version="1.0.0")
@@ -34,13 +39,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Attempt to load ChromaDB with clean in-memory fallback to avoid compiler dependency issues
-try:
-    import chromadb
-    CHROMA_AVAILABLE = True
-except ImportError:
-    CHROMA_AVAILABLE = False
-    print("WARNING: ChromaDB package not found. Falling back to custom in-memory vector store.")
+# Option to force lightweight mode on memory-constrained servers (e.g. Render 512MB free tier)
+DISABLE_HEAVY_VECTORS = os.getenv("DISABLE_HEAVY_VECTORS", "false").lower() == "true"
+
+CHROMA_AVAILABLE = False
+if not DISABLE_HEAVY_VECTORS:
+    try:
+        import chromadb
+        CHROMA_AVAILABLE = True
+    except Exception as e:
+        CHROMA_AVAILABLE = False
+        print(f"WARNING: Could not initialize ChromaDB ({e}). Falling back to custom in-memory vector store.")
 
 # Path to sources.json catalog
 SOURCES_FILE = os.path.join(os.path.dirname(__file__), "sources.json")
