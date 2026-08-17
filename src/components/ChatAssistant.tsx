@@ -462,8 +462,13 @@ export default function ChatAssistant({
           history: historyPayload,
         }),
       });
-      if (!response.ok)
-        throw new Error(`Server returned code ${response.status}`);
+      if (!response.ok) {
+        throw new Error(`Backend API returned error code ${response.status}. Please check if Render service is active.`);
+      }
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        throw new Error(`Invalid response format from server. Please verify your RAG Backend URL in Settings.`);
+      }
       const data = await response.json();
 
       try {

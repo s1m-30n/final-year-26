@@ -33,11 +33,24 @@ function App() {
   const [pipelineMode, setPipelineMode] = useState<"pivot" | "direct">("pivot");
 
   const [backendUrl, setBackendUrl] = useState(() => {
-    return localStorage.getItem("rag_backend_url") || import.meta.env.VITE_RAG_BACKEND_URL || "http://127.0.0.1:8000";
+    const saved = localStorage.getItem("rag_backend_url");
+    const envUrl = import.meta.env.VITE_RAG_BACKEND_URL;
+    const isProduction = typeof window !== "undefined" && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1";
+    
+    // In production, override saved localhost URLs with envUrl if available
+    if (isProduction && saved && (saved.includes("localhost") || saved.includes("127.0.0.1"))) {
+      if (envUrl) return envUrl.replace(/\/+$/, "");
+    }
+    
+    if (saved) return saved.replace(/\/+$/, "");
+    if (envUrl) return envUrl.replace(/\/+$/, "");
+    return "http://127.0.0.1:8000";
   });
 
   useEffect(() => {
-    localStorage.setItem("rag_backend_url", backendUrl);
+    if (backendUrl) {
+      localStorage.setItem("rag_backend_url", backendUrl.replace(/\/+$/, ""));
+    }
   }, [backendUrl]);
 
   const [pipelineLogs, setPipelineLogs] = useState<
